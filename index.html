@@ -609,6 +609,47 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 }
 #toast.show{opacity:1}
 
+/* ── USER MENU DROPDOWN ── */
+.user-menu-wrap{position:relative;display:inline-flex}
+.user-menu-dropdown{
+  position:absolute;top:calc(100% + 6px);right:0;
+  background:var(--paper-warm);
+  border:0.5px solid var(--ui-border2);
+  border-radius:var(--r);box-shadow:var(--shadow-lg);
+  z-index:500;min-width:160px;
+  flex-direction:column;overflow:hidden;
+}
+.user-menu-item{
+  display:flex;align-items:center;gap:8px;
+  padding:10px 14px;
+  font-family:-apple-system,'SF Pro Text',sans-serif;
+  font-size:13px;font-weight:500;color:var(--ink);
+  background:transparent;border:none;cursor:pointer;
+  text-align:left;transition:background var(--tr);
+  white-space:nowrap;
+}
+.user-menu-item:hover{background:var(--accent-lt);color:var(--accent)}
+.user-menu-item+.user-menu-item{border-top:0.5px solid var(--ui-border)}
+
+/* ── USER AVATAR INITIAL ── */
+.user-avatar-initial{
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:#fff;
+  font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;
+}
+
+/* ── LAYOUT EXPANDER ── */
+.layout-expander{
+  display:flex;align-items:center;justify-content:space-between;
+  width:100%;background:var(--ui-bg);border:0.5px solid var(--ui-border);
+  border-radius:var(--r-sm);padding:6px 10px;cursor:pointer;
+  font-family:-apple-system,sans-serif;font-size:11px;font-weight:500;
+  color:var(--ink-soft);margin-top:4px;transition:background var(--tr),color var(--tr);
+}
+.layout-expander:hover{background:var(--accent-lt);color:var(--accent);border-color:var(--accent)}
+
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
@@ -1115,7 +1156,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     </button>
   </div>
   <div class="hactions">
-    <button class="hbtn" onclick="openExpress()" title="Alle Zeichen schnell nacheinander aufnehmen">
+    <button id="schnellscan-btn" class="hbtn" onclick="openExpress()" title="Alle Zeichen schnell nacheinander aufnehmen" style="display:none">
       <i data-lucide="scan-line" style="width:12px;height:12px;vertical-align:middle;margin-right:4px"></i>Schnellscan
     </button>
     <div class="exp-wrap" id="exp-wrap">
@@ -1141,10 +1182,20 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     </div>
     <!-- Sync status badge -->
     <div id="sync-badge" class="sync-badge" style="display:none"></div>
-    <!-- Auth button -->
-    <button class="hbtn gn" id="auth-btn" onclick="handleAuthBtn()">
-      <i data-lucide="user" style="width:13px;height:13px"></i>Anmelden
-    </button>
+    <!-- Auth button + dropdown -->
+    <div class="user-menu-wrap" id="user-menu-wrap">
+      <button class="hbtn gn" id="auth-btn" onclick="handleAuthBtn()">
+        <i data-lucide="user" style="width:13px;height:13px"></i>Anmelden
+      </button>
+      <div class="user-menu-dropdown" id="user-menu-dropdown" style="display:none">
+        <button class="user-menu-item" onclick="closeUserMenu();openSettings();setTimeout(()=>{const el=document.getElementById('account-section-logged-in');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},200)">
+          <i data-lucide="settings" style="width:13px;height:13px"></i>Einstellungen
+        </button>
+        <button class="user-menu-item" onclick="closeUserMenu();signOutUser()">
+          <i data-lucide="log-out" style="width:13px;height:13px"></i>Abmelden
+        </button>
+      </div>
+    </div>
     <button class="hbtn" onclick="openSettings()" title="Einstellungen" style="padding:5px 8px;display:flex;align-items:center">
       <i data-lucide="settings" style="width:13px;height:13px"></i>
     </button>
@@ -1213,16 +1264,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <button class="tbtn" onclick="setLin('blank')">Leer</button>
     </div>
     <div class="vsep" style="background:var(--ui-border);height:18px;width:1px"></div>
-    <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--ink-soft)">
-      Größe
-      <input type="range" id="fs-sl" min="28" max="110" step="4" value="52" oninput="onFsChange(this.value)" style="width:80px">
-      <span id="fs-val">52</span>px
-    </div>
-    <div style="display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--ink-soft)">
-      Jitter
-      <input type="range" id="jit-sl" min="0" max="3" step=".1" value="1" oninput="onJitChange(this.value)" style="width:60px">
-      <span id="jit-val">1.0</span>
-    </div>
     <button class="tbtn" onclick="clearDoc()" style="display:flex;align-items:center;gap:4px"><i data-lucide="trash-2" style="width:11px;height:11px"></i>Leeren</button>
     <div class="vsep" style="background:var(--ui-border);height:18px;width:1px"></div>
     <button class="tbtn" id="fmt-toolbar-btn" onclick="openFormatPicker()" style="display:flex;align-items:center;gap:4px" title="Seitenformat ändern"><i data-lucide="layout" style="width:11px;height:11px"></i><span id="fmt-toolbar-label">A4 · Hoch</span></button>
@@ -1304,35 +1345,49 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   <div class="psec">
     <div class="plabel">Layout</div>
     <div class="srow">
-      <label>Buchstabenabstand <span id="ls-val">1.0</span>×</label>
-      <div class="srow-track">
-        <input type="range" id="ls-sl" min=".7" max="2.0" step=".05" value="1.0" oninput="document.getElementById('ls-val').textContent=parseFloat(this.value).toFixed(2);schedRender()">
-        <button class="slider-rst" onclick="resetSlider('ls-sl')" title="Zurücksetzen"><i data-lucide="rotate-ccw" style="width:11px;height:11px"></i></button>
-      </div>
-    </div>
-    <div class="srow">
-      <label>Wortabstand <span id="ws-val">1.0</span>×</label>
-      <div class="srow-track">
-        <input type="range" id="ws-sl" min=".5" max="2.5" step=".1" value="1.0" oninput="document.getElementById('ws-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
-        <button class="slider-rst" onclick="resetSlider('ws-sl')" title="Zurücksetzen"><i data-lucide="rotate-ccw" style="width:11px;height:11px"></i></button>
-      </div>
-    </div>
-    <div class="srow">
-      <label>Zeilenabstand <span id="lh-val">1.6</span>×</label>
-      <div class="srow-track">
-        <input type="range" id="lh-sl" min="1.0" max="3.0" step=".1" value="1.6" oninput="document.getElementById('lh-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
-        <button class="slider-rst" onclick="resetSlider('lh-sl')" title="Zurücksetzen"><i data-lucide="rotate-ccw" style="width:11px;height:11px"></i></button>
-      </div>
-    </div>
-    <div class="srow">
       <label>Tintenfarbe</label>
-      <input type="color" id="ink-col" value="#1C1917" style="width:100%;height:32px;border:none;border-radius:var(--r-sm);cursor:pointer;background:transparent" oninput="schedRender()">
+      <input type="color" id="ink-col" value="#1C1917" style="width:100%;height:32px;border:none;border-radius:var(--r-sm);cursor:pointer;background:transparent" oninput="schedRender();saveSettings()">
     </div>
     <div class="srow">
       <label>Strichstärke <span id="sw-val">1.0</span>×</label>
       <div class="srow-track">
         <input type="range" id="sw-sl" min="0.4" max="3.0" step="0.1" value="1.0" oninput="document.getElementById('sw-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
-        <button class="slider-rst" onclick="resetSlider('sw-sl')" title="Zurücksetzen"><i data-lucide="rotate-ccw" style="width:11px;height:11px"></i></button>
+      </div>
+    </div>
+    <button class="layout-expander" id="layout-expander" onclick="toggleLayoutExpander()">
+      <span>Mehr Layout-Optionen</span>
+      <i data-lucide="chevron-down" id="layout-expander-icon" style="width:12px;height:12px;transition:transform .2s"></i>
+    </button>
+    <div id="layout-extra" style="display:none;flex-direction:column;gap:0">
+      <div class="srow">
+        <label>Größe <span id="fs-val">52</span>px</label>
+        <div class="srow-track">
+          <input type="range" id="fs-sl" min="28" max="110" step="4" value="52" oninput="onFsChange(this.value)">
+        </div>
+      </div>
+      <div class="srow">
+        <label>Jitter <span id="jit-val">1.0</span></label>
+        <div class="srow-track">
+          <input type="range" id="jit-sl" min="0" max="3" step=".1" value="1" oninput="onJitChange(this.value)">
+        </div>
+      </div>
+      <div class="srow">
+        <label>Buchstabenabstand <span id="ls-val">1.0</span>×</label>
+        <div class="srow-track">
+          <input type="range" id="ls-sl" min=".7" max="2.0" step=".05" value="1.0" oninput="document.getElementById('ls-val').textContent=parseFloat(this.value).toFixed(2);schedRender()">
+        </div>
+      </div>
+      <div class="srow">
+        <label>Wortabstand <span id="ws-val">1.0</span>×</label>
+        <div class="srow-track">
+          <input type="range" id="ws-sl" min=".5" max="2.5" step=".1" value="1.0" oninput="document.getElementById('ws-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
+        </div>
+      </div>
+      <div class="srow">
+        <label>Zeilenabstand <span id="lh-val">1.6</span>×</label>
+        <div class="srow-track">
+          <input type="range" id="lh-sl" min="1.0" max="3.0" step=".1" value="1.6" oninput="document.getElementById('lh-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
+        </div>
       </div>
     </div>
   </div>
@@ -1580,9 +1635,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           </button>
         </div>
         <div class="smodal-row">
-          <button class="smodal-btn danger" onclick="resetAccount()" style="display:flex;align-items:center;gap:6px">
-            <i data-lucide="refresh-cw" style="width:13px;height:13px"></i>Zurücksetzen
-          </button>
           <button class="smodal-btn danger" onclick="deleteAccount()" style="display:flex;align-items:center;gap:6px">
             <i data-lucide="user-x" style="width:13px;height:13px"></i>Konto löschen
           </button>
@@ -1619,7 +1671,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         </div>
 
         <div class="smodal-note">
-          <b>Zurücksetzen:</b> Alle Zeichen und Einstellungen werden gelöscht (lokal + Cloud), das Konto bleibt bestehen.<br>
           <b>Konto löschen:</b> Dein Konto und alle Cloud-Daten werden unwiderruflich gelöscht.
         </div>
       </div>
@@ -2142,7 +2193,12 @@ class RenderEngine {
     const vs=this.store.get(ch);
     if(!vs) return this.cfg.fontSize*0.65*zs;
     const avg=vs.reduce((s,v)=>s+v.aw,0)/vs.length;
-    return avg*this.sc*this.cfg.letterSpacing*zs;
+    let adv=avg*this.sc*this.cfg.letterSpacing*zs;
+    // Ensure narrow letters like i, j, l, t get at least a minimum advance
+    // so they don't slide into the next character
+    const minAdv=this.cfg.fontSize*0.28*this.cfg.letterSpacing;
+    if('ijl!|'.includes(ch)) adv=Math.max(adv,minAdv);
+    return adv;
   }
 
   _measureWord(w){let s=0;for(const c of w)s+=this._adv(c);return s}
@@ -2236,7 +2292,8 @@ class RenderEngine {
             }
             this._drawGlyph(glyph,curX,baseY,jit,ctx,ch);
             prevG={glyph,x:curX,baseY,ch};
-            curX+=this._adv(ch)+jit.dx;
+            const adv=this._adv(ch);
+            curX+=Math.max(adv*0.4, adv+jit.dx);
           }
 
           this.wordMap.push({
@@ -2575,7 +2632,7 @@ function confirmPageFormat(){
   ensurePages(1);
   _snapTextToFormatGrid();
   schedRender();
-  saveSettings();
+  saveSettingsLocal();
   closeFormatPicker();
   const oriLabel=_fmtPendingKey==='custom'?'':(currentOrientation==='portrait'?' · Hochformat':' · Querformat');
   showToast('Format: '+fmt.name+oriLabel+' ✓');
@@ -3154,6 +3211,8 @@ function switchTab(t){
   document.getElementById('shell').className=isDoc?'compose-mode':'';
   document.getElementById('tab-rec').classList.toggle('on',!isDoc);
   document.getElementById('tab-doc').classList.toggle('on',isDoc);
+  const ss=document.getElementById('schnellscan-btn');
+  if(ss) ss.style.display=isDoc?'none':'';
   if(isDoc) document.getElementById('txt').focus();
 }
 
@@ -3314,6 +3373,33 @@ function saveSettings(){
   scheduleSync();
 }
 
+function saveSettingsLocal(){
+  const pgcBtn=(document.querySelector('.pg-swatch.on')||{}).id||'pgc-white';
+  const pgc=getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim()||'#FFFFFF';
+  const s={
+    ls:  document.getElementById('ls-sl').value,
+    ws:  document.getElementById('ws-sl').value,
+    lh:  document.getElementById('lh-sl').value,
+    sw:  document.getElementById('sw-sl').value,
+    fs:  document.getElementById('fs-sl').value,
+    jit: document.getElementById('jit-sl').value,
+    ps:  document.getElementById('ps').value,
+    ink: document.getElementById('ink-col').value,
+    lin: currentLin,
+    pgc: pgc,
+    pgf: getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3',
+    pgs: currentPageStripe||'',
+    pgcBtn: pgcBtn,
+    customColors: JSON.stringify(customPageColors),
+    fmt: currentPageFormat,
+    ori: currentOrientation,
+    customW: PAGE_W,
+    customH: PAGE_H
+  };
+  const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
+  document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
+}
+
 function loadSettings(){
   const match=document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('mw-settings='));
   if(!match) return;
@@ -3387,7 +3473,7 @@ function resetAllLayout(){Object.keys(LAYOUT_DEFAULTS).forEach(resetSlider);}
 function setTheme(t){
   document.documentElement.dataset.theme=t;
   localStorage.setItem('mw-theme',t);
-  scheduleSync();
+  _dirty.prefs=true; scheduleSync();
   const active={background:'var(--accent-lt)',borderColor:'var(--accent)',color:'var(--accent)'};
   const reset={background:'',borderColor:'',color:''};
   ['light','dark','auto'].forEach(k=>{
@@ -4261,19 +4347,30 @@ function updateAuthUI(user){
   const btn = document.getElementById('auth-btn');
   if(!btn) return;
   if(user){
+    const isEmailUser = user.providerData && user.providerData.some(p => p.providerId === 'password');
+    const hasPhoto = user.photoURL && !isEmailUser;
+    const nameStr = user.displayName
+      ? user.displayName.split(' ')[0]
+      : (user.email ? user.email.split('@')[0] : 'Konto');
     btn.innerHTML = '';
-    if(user.photoURL){
+    if(hasPhoto){
       const img = document.createElement('img');
       img.src = user.photoURL;
       img.style.cssText = 'width:22px;height:22px;border-radius:50%;object-fit:cover;flex-shrink:0';
       img.onerror = () => img.remove();
       btn.appendChild(img);
+    } else {
+      const initials = nameStr.charAt(0).toUpperCase();
+      const av = document.createElement('div');
+      av.className = 'user-avatar-initial';
+      av.textContent = initials;
+      btn.appendChild(av);
     }
     const span = document.createElement('span');
     span.style.cssText = 'max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px';
-    span.textContent = (user.displayName || 'Konto').split(' ')[0];
+    span.textContent = nameStr;
     btn.appendChild(span);
-    btn.title = user.displayName || user.email || '';
+    btn.title = user.email || '';
     setSyncStatus('synced');
   } else {
     btn.innerHTML = '<i data-lucide="user" style="width:13px;height:13px"></i>Anmelden';
@@ -4294,7 +4391,14 @@ function updateAccountSection(){
     const photo = document.getElementById('account-photo');
     const name  = document.getElementById('account-name');
     const email = document.getElementById('account-email');
-    if(photo){ photo.src = fbUser.photoURL || ''; if(!fbUser.photoURL) photo.style.display='none'; else photo.style.display=''; }
+    if(photo){
+      const _isEmail = fbUser.providerData && fbUser.providerData.some(p=>p.providerId==='password');
+      if(fbUser.photoURL && !_isEmail){
+        photo.src=fbUser.photoURL; photo.style.display='';
+      } else {
+        photo.style.display='none';
+      }
+    }
     if(name)  name.textContent  = fbUser.displayName || fbUser.email?.split('@')[0] || 'Nutzer';
     if(email){
       const verified = fbUser.emailVerified;
@@ -4323,10 +4427,38 @@ function updateAccountSection(){
 // ── AUTH BUTTON HANDLER ────────────────────────────────────
 function handleAuthBtn(){
   if(fbUser){
-    openSettings();
+    toggleUserMenu();
   } else {
     openLoginModal();
   }
+}
+
+function toggleUserMenu(){
+  const dd = document.getElementById('user-menu-dropdown');
+  if(!dd) return;
+  const isOpen = dd.style.display !== 'none';
+  dd.style.display = isOpen ? 'none' : 'flex';
+  if(!isOpen && window.lucide) lucide.createIcons();
+}
+
+function closeUserMenu(){
+  const dd = document.getElementById('user-menu-dropdown');
+  if(dd) dd.style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('user-menu-wrap');
+  if(wrap && !wrap.contains(e.target)) closeUserMenu();
+});
+
+function toggleLayoutExpander(){
+  const extra = document.getElementById('layout-extra');
+  const icon  = document.getElementById('layout-expander-icon');
+  if(!extra) return;
+  const isOpen = extra.style.display !== 'none';
+  extra.style.display = isOpen ? 'none' : 'flex';
+  if(icon) icon.style.transform = isOpen ? '' : 'rotate(180deg)';
+  if(!isOpen && window.lucide) lucide.createIcons();
 }
 
 // ── SIGN IN ────────────────────────────────────────────────

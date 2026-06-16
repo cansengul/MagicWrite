@@ -3758,20 +3758,11 @@ async function deleteAccount(){
   if(!fbUser) return;
   if(!confirm('Konto wirklich löschen?\n\nAlle Cloud-Daten werden unwiderruflich entfernt. Lokale Daten bleiben erhalten.')) return;
 
-  // For email/password users: require re-authentication via modal
+  // Try direct delete first — works if the session is fresh.
+  // Only fall back to re-auth if Firebase explicitly requires it.
   const providerIds = fbUser.providerData.map(p => p.providerId);
   const isEmailUser = providerIds.includes('password');
-  if(isEmailUser){
-    openReauthModal();
-    return;
-  }
 
-  // For Google (and other OAuth) users: attempt direct delete,
-  // and if the session is too old, silently reauthenticate via popup first.
-  await _doDeleteGoogleAccount();
-}
-
-async function _doDeleteGoogleAccount(){
   try{
     await fbDb.ref(`users/${fbUser.uid}`).remove();
     await fbUser.delete();
@@ -3779,18 +3770,22 @@ async function _doDeleteGoogleAccount(){
     showToast('Konto wurde gelöscht');
   }catch(err){
     if(err.code === 'auth/requires-recent-login'){
-      // Session too old → reauth via Google popup, then delete immediately
-      try{
-        const provider = new firebase.auth.GoogleAuthProvider();
-        await fbUser.reauthenticateWithPopup(provider);
-        // Reauth OK → now delete
-        await fbDb.ref(`users/${fbUser.uid}`).remove();
-        await fbUser.delete();
-        closeSettings();
-        showToast('Konto wurde gelöscht');
-      }catch(reauthErr){
-        if(reauthErr.code !== 'auth/popup-closed-by-user'){
-          showToast('Fehler beim Löschen: ' + (reauthErr.message || reauthErr.code));
+      if(isEmailUser){
+        // Session too old for email user → ask for password once
+        openReauthModal();
+      } else {
+        // Session too old for Google user → silent popup reauth
+        try{
+          const provider = new firebase.auth.GoogleAuthProvider();
+          await fbUser.reauthenticateWithPopup(provider);
+          await fbDb.ref(`users/${fbUser.uid}`).remove();
+          await fbUser.delete();
+          closeSettings();
+          showToast('Konto wurde gelöscht');
+        }catch(reauthErr){
+          if(reauthErr.code !== 'auth/popup-closed-by-user'){
+            showToast('Fehler beim Löschen: ' + (reauthErr.message || reauthErr.code));
+          }
         }
       }
     } else {

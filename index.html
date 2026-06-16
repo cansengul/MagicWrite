@@ -999,6 +999,47 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
 }
 #import-modal.open{display:flex}
+/* ── PAGE EXPORT MODAL ── */
+#page-export-modal{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.45);
+  z-index:2600;display:none;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+}
+#page-export-modal.open{display:flex}
+.pexp-card{
+  background:var(--paper-warm);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-lg);
+  max-width:580px;width:95%;max-height:90vh;
+  display:flex;flex-direction:column;
+  animation:slideUp .22s ease;overflow:hidden;
+}
+.pexp-head{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 18px 10px;border-bottom:0.5px solid var(--ui-border);
+  flex-shrink:0;
+}
+.pexp-title{font-size:15px;font-weight:700;color:var(--ink);font-family:-apple-system,'SF Pro Display',sans-serif}
+.pexp-hint{font-size:10.5px;color:var(--ink-soft);padding:8px 18px 0;flex-shrink:0}
+.pexp-grid{
+  display:flex;flex-wrap:wrap;gap:14px;
+  padding:14px 18px 18px;overflow-y:auto;flex:1;
+  align-content:flex-start;
+}
+.pexp-thumb{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  cursor:grab;user-select:none;
+}
+.pexp-thumb canvas{
+  border-radius:4px;
+  background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0 0/8px 8px;
+  box-shadow:0 1px 5px rgba(0,0,0,0.15);
+  transition:box-shadow .15s,transform .15s;
+}
+.pexp-thumb:hover canvas{box-shadow:0 4px 14px rgba(0,0,0,0.2);transform:translateY(-1px)}
+.pexp-thumb:active{cursor:grabbing}
+.pexp-lbl{font-size:9.5px;color:var(--ink-soft)}
 .import-card{
   background:var(--paper-warm);border-radius:var(--r-lg);
   box-shadow:var(--shadow-lg);padding:24px;
@@ -1092,6 +1133,9 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         </button>
         <button class="exp-item" onclick="closeExportMenu();exportGoodNotesInk()">
           <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes (keine Bearbeitung)
+        </button>
+        <button class="exp-item" onclick="openPageExportModal()">
+          <i data-lucide="layers" style="width:13px;height:13px"></i>Seiten-Export · PNG (GoodNotes)
         </button>
       </div>
     </div>
@@ -1218,13 +1262,19 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <div class="custom-col-row" id="custom-col-row"></div>
     <div id="custom-col-popup" class="custom-col-popup" style="display:none">
       <div style="display:flex;gap:6px;align-items:center">
-        <input type="color" id="custom-col-picker" value="#e8e0d0" style="width:36px;height:28px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer">
-        <input type="text" id="custom-col-name" placeholder="Name (z.B. Beige)" style="flex:1">
+        <input type="color" id="custom-col-picker" value="#e8e0d0" style="width:32px;height:26px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0">
+        <input type="text" id="custom-col-name" placeholder="Name (z.B. Beige)" style="flex:1;min-width:0">
       </div>
       <div style="display:flex;gap:6px;align-items:center">
-        <label style="font-size:10px;color:var(--ink-soft);white-space:nowrap">Linienfarbe:</label>
-        <input type="color" id="custom-fg-picker" value="#D0D2D3" style="width:36px;height:28px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0">
+        <label style="font-size:10px;color:var(--ink-soft);white-space:nowrap;min-width:60px">Linienfarbe:</label>
+        <input type="color" id="custom-fg-picker" value="#D0D2D3" style="width:32px;height:26px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0">
         <span style="font-size:9.5px;color:var(--ink-soft)">Linien &amp; Raster</span>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="checkbox" id="custom-stripe-on" style="cursor:pointer;flex-shrink:0" onchange="document.getElementById('custom-stripe-picker').style.opacity=this.checked?'1':'0.35'">
+        <label for="custom-stripe-on" style="font-size:10px;color:var(--ink-soft);white-space:nowrap;min-width:60px;cursor:pointer">Randstreifen:</label>
+        <input type="color" id="custom-stripe-picker" value="#D23C3C" style="width:32px;height:26px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0;opacity:0.35">
+        <span style="font-size:9.5px;color:var(--ink-soft)">(leer = Standard-Rot)</span>
       </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-p" style="flex:1;font-size:10px;padding:4px 8px" onclick="confirmCustomColor()">Speichern</button>
@@ -1785,6 +1835,20 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 </div>
 
 <!-- IMPORT PREVIEW MODAL -->
+<!-- PAGE EXPORT MODAL -->
+<div id="page-export-modal">
+  <div class="pexp-card">
+    <div class="pexp-head">
+      <span class="pexp-title">Seiten exportieren – PNG</span>
+      <button class="smodal-close" onclick="closePageExportModal()" title="Schließen">
+        <i data-lucide="x" style="width:15px;height:15px"></i>
+      </button>
+    </div>
+    <div class="pexp-hint">Seite auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen.</div>
+    <div class="pexp-grid" id="pexp-grid"></div>
+  </div>
+</div>
+
 <div id="import-modal">
   <div class="import-card">
     <div class="import-title">Import-Vorschau</div>
@@ -2478,7 +2542,12 @@ function _snapTextToFormatGrid(){
   const newMT=Math.max(4,k*sp-capH);
   engine.cfg.marginT=newMT;
   engine.cfg.lineHeight=newLH;
-  engine.cfg.marginL=ptToPx(46)+12; // right of red margin line
+  // Only push left margin past the red stripe for formats that actually draw it
+  if(currentLin==='gn-lined'||currentLin==='gn-notepad'||currentLin==='ruled'){
+    engine.cfg.marginL=ptToPx(46)+12;
+  } else {
+    engine.cfg.marginL=72; // default left margin — no stripe
+  }
   // Reflect snapped lineHeight on slider
   const lhEl=document.getElementById('lh-sl');
   const lhVal=document.getElementById('lh-val');
@@ -2631,7 +2700,7 @@ function drawLin(ctx,w,h,type){
     ctx.strokeStyle=fgLine(0.45);ctx.lineWidth=0.85;
     const sp=Math.round(ptToPx(14)); // ~19px ≈ tight college-ruled
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-    ctx.strokeStyle='rgba(210,60,60,0.52)';ctx.lineWidth=1.0;
+    ctx.strokeStyle=getStripeColor();ctx.lineWidth=1.0;
     const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
     return;
   }
@@ -2641,7 +2710,7 @@ function drawLin(ctx,w,h,type){
     ctx.strokeStyle=fgLine(0.42);ctx.lineWidth=0.85;
     const sp=Math.round(ptToPx(17)); // ≈23px → ~34 lines on GN Standard 588pt page
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-    ctx.strokeStyle='rgba(210,60,60,0.52)';ctx.lineWidth=1.0;
+    ctx.strokeStyle=getStripeColor();ctx.lineWidth=1.0;
     const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
     return;
   }
@@ -2662,8 +2731,11 @@ function drawLin(ctx,w,h,type){
       ctx.beginPath();ctx.arc(x,y,1.1,0,Math.PI*2);ctx.fill();
     }
   }
-  ctx.strokeStyle='rgba(210,60,60,0.50)';ctx.lineWidth=1.0;
-  const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
+  // Red stripe only for "liniert" (ruled) — not for grid, dot, blank
+  if(type==='ruled'){
+    ctx.strokeStyle=getStripeColor();ctx.lineWidth=1.0;
+    const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
+  }
 }
 
 function setLin(t){
@@ -3088,9 +3160,17 @@ function switchTab(t){
 // ═══════════════════════════════════════════════════════════
 // PAGE COLOR
 // ═══════════════════════════════════════════════════════════
-function setPageColor(hex,fg,btnId){
+let currentPageStripe='';
+function getStripeColor(){
+  if(!currentPageStripe)return'rgba(210,60,60,0.50)';
+  const h=currentPageStripe.replace('#','');
+  const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16);
+  return`rgba(${r},${g},${b},0.50)`;
+}
+function setPageColor(hex,fg,btnId,stripe){
   document.documentElement.style.setProperty('--page-bg',hex);
   document.documentElement.style.setProperty('--page-fg',fg||'#D0D2D3');
+  currentPageStripe=stripe||'';
   document.querySelectorAll('.pg-swatch').forEach(b=>b.classList.remove('on'));
   if(btnId){const btn=document.getElementById(btnId);if(btn)btn.classList.add('on');}
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,currentLin));
@@ -3108,12 +3188,15 @@ function toggleCustomColPopup(){
 function confirmCustomColor(){
   const hex=document.getElementById('custom-col-picker')?.value||'#cccccc';
   const fg=document.getElementById('custom-fg-picker')?.value||'#D0D2D3';
+  const stripeOn=document.getElementById('custom-stripe-on')?.checked;
+  const stripe=stripeOn?(document.getElementById('custom-stripe-picker')?.value||''):'';
   const name=(document.getElementById('custom-col-name')?.value.trim()||hex);
-  customPageColors.push({hex,fg,name});
+  customPageColors.push({hex,fg,stripe,name});
   localStorage.setItem('mw-custom-colors',JSON.stringify(customPageColors));
   renderCustomColors();
   document.getElementById('custom-col-popup').style.display='none';
   document.getElementById('custom-col-name').value='';
+  document.getElementById('custom-stripe-on').checked=false;
   _dirty.settings=true; scheduleSync();
 }
 function removeCustomColor(idx){
@@ -3133,7 +3216,7 @@ function renderCustomColors(){
     btn.className='pg-swatch';
     btn.title=c.name;
     btn.style.cssText=`background:${c.hex};box-shadow:0 1px 3px rgba(0,0,0,0.15)`;
-    btn.onclick=()=>setPageColor(c.hex,c.fg||'#D0D2D3','');
+    btn.onclick=()=>setPageColor(c.hex,c.fg||'#D0D2D3','',c.stripe||'');
     const del=document.createElement('button');
     del.style.cssText='position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:#FF3B30;color:#fff;border:none;cursor:pointer;font-size:8px;line-height:12px;padding:0;display:flex;align-items:center;justify-content:center;';
     del.innerHTML='×';del.title='Entfernen';
@@ -3217,6 +3300,7 @@ function saveSettings(){
     lin: currentLin,
     pgc: pgc,
     pgf: getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3',
+    pgs: currentPageStripe||'',
     pgcBtn: pgcBtn,
     customColors: JSON.stringify(customPageColors),
     fmt: currentPageFormat,
@@ -3268,7 +3352,8 @@ function loadSettings(){
     if(s.ps  != null){setEl('ps',s.ps);     const lbl=document.getElementById('ps-val'); if(lbl)lbl.textContent=s.ps;}
     if(s.ink != null){const el=document.getElementById('ink-col');if(el)el.value=s.ink;}
     if(s.lin)  setLin(s.lin);
-    if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'');
+    if(s.pgs !== undefined) currentPageStripe = s.pgs||'';
+    if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
     if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
     renderCustomColors();
   }catch(e){}
@@ -3530,6 +3615,64 @@ async function exportPagePNG(pgIdx){
   setTimeout(()=>URL.revokeObjectURL(a.href),60000);
   showToast('Transparentes PNG exportiert ✓');
 }
+
+// ── SEITEN-EXPORT MODAL (GoodNotes drag & drop) ──────────
+function openPageExportModal(){
+  closeExportMenu();
+  const grid=document.getElementById('pexp-grid');
+  if(!grid) return;
+  grid.innerHTML='';
+  const maxSide=150;
+  const scale=maxSide/Math.max(PAGE_W,PAGE_H);
+  const tw=Math.round(PAGE_W*scale);
+  const th=Math.round(PAGE_H*scale);
+  pagesData.forEach((p,pg)=>{
+    const wrap=document.createElement('div');
+    wrap.className='pexp-thumb';
+
+    // Thumbnail canvas (ink only – transparent bg)
+    const thumb=document.createElement('canvas');
+    thumb.width=tw; thumb.height=th;
+    const tctx=thumb.getContext('2d');
+    tctx.drawImage(p.inkCv,0,0,tw,th);
+
+    // Drag as full-resolution transparent PNG
+    thumb.draggable=true;
+    thumb.addEventListener('dragstart',e=>{
+      // Build full-size PNG from inkCv
+      const exp=document.createElement('canvas');
+      exp.width=PAGE_W*2; exp.height=PAGE_H*2;
+      exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
+      const url=exp.toDataURL('image/png');
+      e.dataTransfer.effectAllowed='copy';
+      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+      e.dataTransfer.setData('text/uri-list',url);
+    });
+
+    // Click → download
+    thumb.addEventListener('click',()=>exportPagePNG(pg));
+
+    const lbl=document.createElement('div');
+    lbl.className='pexp-lbl';
+    const ptW=Math.round(PAGE_W/96*72);
+    const ptH=Math.round(PAGE_H/96*72);
+    lbl.textContent=`Seite ${pg+1} · ${ptW}×${ptH} pt`;
+
+    wrap.appendChild(thumb);
+    wrap.appendChild(lbl);
+    grid.appendChild(wrap);
+  });
+  document.getElementById('page-export-modal').classList.add('open');
+  // Re-init Lucide icons for the close button
+  if(typeof lucide!=='undefined') lucide.createIcons();
+}
+function closePageExportModal(){
+  document.getElementById('page-export-modal').classList.remove('open');
+}
+// Close page export modal on backdrop click
+document.getElementById('page-export-modal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('page-export-modal')) closePageExportModal();
+});
 
 // ── PER-PAGE GOODNOTES PDF (transparent background) ──────
 async function exportPageGoodNotesPDF(pgIdx){
@@ -4502,7 +4645,7 @@ function applyFirebaseData(data, isInitialLoad){
           pagesData.forEach(p => drawLin(p.bgCtx, PAGE_W, PAGE_H, s.lin));
         }
         if(s.pgc){
-          setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'');
+          setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
         }
         if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
         renderCustomColors();
@@ -4575,6 +4718,7 @@ async function pushToFirebase(){
         ink: document.getElementById('ink-col').value,
         lin: currentLin, pgc, pgcBtn,
         pgf: getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3',
+        pgs: currentPageStripe||'',
         customColors: JSON.stringify(customPageColors),
         fmt: currentPageFormat, ori: currentOrientation,
         customW: PAGE_W, customH: PAGE_H

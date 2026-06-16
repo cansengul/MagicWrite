@@ -147,6 +147,21 @@ header{
 .sync-progress{background:rgba(0,122,255,0.10);color:var(--accent)}
 .sync-offline{background:rgba(60,60,67,0.08);color:var(--ink-soft)}
 .sync-error{background:rgba(255,59,48,0.10);color:var(--destructive)}
+@keyframes mw-spin{to{transform:rotate(360deg)}}
+.sync-spinner{display:inline-block;animation:mw-spin .85s linear infinite}
+
+/* ── GLYPH LIMIT BAR ── */
+.limit-bar-wrap{background:var(--ui-border);border-radius:var(--r-full);height:5px;overflow:hidden;margin-top:3px}
+.limit-bar-fill{height:100%;border-radius:var(--r-full);transition:width .4s,background .4s;background:var(--success)}
+.limit-bar-fill.warn{background:var(--warn)}
+.limit-bar-fill.danger{background:var(--destructive)}
+
+/* ── PASSWORD CHANGE FORM ── */
+.pw-change-form{display:flex;flex-direction:column;gap:7px;padding:10px;background:var(--paper);border:1px solid var(--ui-border2);border-radius:var(--r-md);margin-top:2px}
+
+/* ── LIMIT MODAL ── */
+#limit-modal{position:fixed;inset:0;background:rgba(0,0,0,0.50);z-index:4000;display:none;align-items:center;justify-content:center;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+#limit-modal.open{display:flex}
 
 /* ── AUTH BUTTON (user avatar variant) ── */
 #auth-btn{
@@ -929,7 +944,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           <i data-lucide="file-text" style="width:13px;height:13px"></i>PDF (Drucken)
         </button>
         <button class="exp-item" onclick="closeExportMenu();exportGoodNotesInk()">
-          <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes Ink-PDF
+          <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes (keine Bearbeitung)
         </button>
       </div>
     </div>
@@ -1338,9 +1353,40 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
             <i data-lucide="user-x" style="width:13px;height:13px"></i>Konto löschen
           </button>
         </div>
+        <!-- Glyph limit -->
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-bottom:2px">
+            <span>Gespeicherte Zeichen</span>
+            <span><b id="acct-glyph-count">0</b> / <span id="acct-glyph-max">300</span></span>
+          </div>
+          <div class="limit-bar-wrap"><div id="acct-limit-bar" class="limit-bar-fill" style="width:0%"></div></div>
+        </div>
+
+        <!-- Password change (email users only) -->
+        <div id="pw-change-section" style="display:none;flex-direction:column;gap:0">
+          <button class="smodal-btn" onclick="togglePwChangeForm()" style="display:flex;align-items:center;gap:6px">
+            <i data-lucide="key" style="width:13px;height:13px"></i>Passwort ändern
+          </button>
+          <div id="pw-change-form" class="pw-change-form" style="display:none">
+            <div class="lm-input-wrap">
+              <input class="lm-input" id="pw-old" type="password" placeholder="Aktuelles Passwort" autocomplete="current-password">
+              <button class="lm-pw-toggle" type="button" onclick="lmTogglePw('pw-old',this)" tabindex="-1"><i data-lucide="eye" style="width:15px;height:15px"></i></button>
+            </div>
+            <div class="lm-input-wrap">
+              <input class="lm-input" id="pw-new" type="password" placeholder="Neues Passwort (min. 6 Zeichen)" autocomplete="new-password">
+              <button class="lm-pw-toggle" type="button" onclick="lmTogglePw('pw-new',this)" tabindex="-1"><i data-lucide="eye" style="width:15px;height:15px"></i></button>
+            </div>
+            <div class="lm-error-msg" id="pw-change-err"></div>
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-o" style="flex:1" onclick="togglePwChangeForm()">Abbrechen</button>
+              <button id="pw-change-btn" class="btn" style="flex:1;background:var(--accent);color:#fff;font-weight:600" onclick="doChangePassword()">Speichern</button>
+            </div>
+          </div>
+        </div>
+
         <div class="smodal-note">
           <b>Zurücksetzen:</b> Alle Zeichen und Einstellungen werden gelöscht (lokal + Cloud), das Konto bleibt bestehen.<br>
-          <b>Konto löschen:</b> Dein Konto und alle Cloud-Daten werden unwiderruflich gelöscht. Bei E-Mail-Konten musst du dein Passwort zur Bestätigung erneut eingeben.
+          <b>Konto löschen:</b> Dein Konto und alle Cloud-Daten werden unwiderruflich gelöscht.
         </div>
       </div>
 
@@ -1493,6 +1539,18 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   </div>
 </div>
 
+<!-- CHARACTER LIMIT MODAL -->
+<div id="limit-modal">
+  <div class="reauth-card">
+    <div class="reauth-title">⚠️ Zeichenlimit erreicht</div>
+    <div class="reauth-desc">Du hast das Maximum von <b id="limit-modal-max">300</b> gespeicherten Zeichen erreicht. Exportiere deine Zeichen als Sicherung oder lösche einzelne Zeichen, um neue aufnehmen zu können.</div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn btn-o" style="flex:1" onclick="document.getElementById('limit-modal').classList.remove('open')">Schließen</button>
+      <button class="btn" style="flex:1;background:var(--accent);color:#fff;font-weight:600" onclick="document.getElementById('limit-modal').classList.remove('open');exportGlyphs()"><i data-lucide="download" style="width:12px;height:12px"></i> Exportieren</button>
+    </div>
+  </div>
+</div>
+
 <!-- MERGE CHOICE MODAL (shown on first login when local glyphs exist) -->
 <div id="merge-modal">
   <div class="merge-card">
@@ -1511,13 +1569,17 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       </div>
     </div>
     <div class="merge-btns">
-      <button class="merge-btn primary" onclick="mergeKeepLocal()">
-        Lokale Zeichen behalten &amp; hochladen
-        <span class="merge-btn-sub">Deine Zeichen von diesem Gerät werden in den Account übernommen.</span>
+      <button class="merge-btn primary" onclick="mergeCombine()">
+        Zusammenführen – Beides behalten
+        <span class="merge-btn-sub">Alle Zeichen beider Quellen werden kombiniert. Bei gleichen Buchstaben bleiben die lokalen Varianten erhalten.</span>
+      </button>
+      <button class="merge-btn" onclick="mergeKeepLocal()">
+        Lokal behalten &amp; hochladen
+        <span class="merge-btn-sub">Nur die Zeichen von diesem Gerät werden ins Konto übertragen. Konto-Zeichen werden überschrieben.</span>
       </button>
       <button class="merge-btn" onclick="mergeUseCloud()">
         Konto-Zeichen laden
-        <span class="merge-btn-sub">Die lokalen Zeichen werden verworfen und durch die des Accounts ersetzt.</span>
+        <span class="merge-btn-sub">Die lokalen Zeichen werden verworfen und durch die des Kontos ersetzt.</span>
       </button>
     </div>
   </div>
@@ -1583,6 +1645,18 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "903002520714",
   appId:             "1:903002520714:web:33dede8b65f9d12fe00173"
 };
+
+// ── GLYPH LIMIT ─────────────────────────────────────────────
+const MAX_GLYPHS = 300;
+
+// ── FIREBASE DIRTY FLAGS (only sync what changed) ───────────
+// Initialized true so first push after login sends everything
+const _dirty = { glyphs: true, settings: true, customChars: true, prefs: true };
+
+// ── APPLE PENCIL DETECTION ──────────────────────────────────
+// Once a pen is detected, finger-touches on draw surfaces are ignored
+let _hasPen = false;
+document.addEventListener('pointerdown', e => { if(e.pointerType === 'pen') _hasPen = true; }, { capture: true, passive: true });
 
 // ═══════════════════════════════════════════════════════════
 // RNG
@@ -2344,7 +2418,7 @@ function loadUnknownPref(){
   updateSettingsUnknownRadio();
 }
 function saveUnknownPref(){localStorage.setItem('mw-unknown-pref',unknownSymbolPref);}
-function setUnknownPref(v){unknownSymbolPref=v;saveUnknownPref();scheduleSync();}
+function setUnknownPref(v){unknownSymbolPref=v;saveUnknownPref();_dirty.prefs=true;scheduleSync();}
 function updateSettingsUnknownRadio(){
   ['ask','ignore','scan'].forEach(v=>{
     const el=document.getElementById('unk-'+v);
@@ -2448,6 +2522,13 @@ function saveStroke(){
   if(!sd.length){showToast('Zuerst ein Zeichen zeichnen!');return;}
   const ch=curCustomIdx>=0?customChars[curCustomIdx]:CHARS[charIdx];
   if(!ch){showToast('Bitte zuerst ein Zeichen auswählen');return;}
+  // Enforce glyph limit for characters not yet in the store
+  if(!store.has(ch) && store.count() >= MAX_GLYPHS){
+    document.getElementById('limit-modal-max').textContent = MAX_GLYPHS;
+    document.getElementById('limit-modal').classList.add('open');
+    if(window.lucide) lucide.createIcons();
+    return;
+  }
   store.add(ch,sd);
   recorder.clear();
   if(curCustomIdx>=0){refreshCustomChar();buildCustomGrid();}else{refreshChar();}
@@ -2589,7 +2670,9 @@ async function persistProfile(){
   await openDB();
   const tx=db.transaction('profiles','readwrite');
   tx.objectStore('profiles').put({name:'default',g:store.toJSON(),ts:Date.now()});
+  _dirty.glyphs = true;
   scheduleSync();
+  updateGlyphLimitBar();
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2613,6 +2696,7 @@ function saveSettings(){
   };
   const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
   document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
+  _dirty.settings = true;
   scheduleSync();
 }
 
@@ -3116,7 +3200,10 @@ function exRefreshChar(){
   };
 
   newCv.addEventListener('pointerdown',e=>{
-    e.preventDefault();exCancelCd();drawing=true;
+    e.preventDefault();
+    // Ignore accidental finger touch once an Apple Pencil / stylus has been detected
+    if(_hasPen && e.pointerType === 'touch') return;
+    exCancelCd();drawing=true;
     const p=pos(e); cur=[p];
     const pw=parseFloat(document.getElementById('ps').value)||2.5;
     const inkEl=document.getElementById('ink-col'); ctx.strokeStyle=inkEl?inkEl.value:'#1C1917';
@@ -3127,6 +3214,7 @@ function exRefreshChar(){
 
   newCv.addEventListener('pointermove',e=>{
     if(!drawing)return; e.preventDefault();
+    if(_hasPen && e.pointerType === 'touch') return;
     const p=pos(e); cur.push(p);
     const n=cur.length;
     if(n>=2){
@@ -3179,7 +3267,16 @@ function exCancelCd(){
 function exCommit(){
   exCancelCd();
   if(exStrokes.length>0){
-    store.add(CHARS[exCharIdx], exStrokes);
+    const ch = CHARS[exCharIdx];
+    // Enforce glyph limit for characters not yet in the store
+    if(!store.has(ch) && store.count() >= MAX_GLYPHS){
+      document.getElementById('limit-modal-max').textContent = MAX_GLYPHS;
+      document.getElementById('limit-modal').classList.add('open');
+      if(window.lucide) lucide.createIcons();
+      exAdvance(); // skip this char instead of blocking the scan
+      return;
+    }
+    store.add(ch, exStrokes);
     persistProfile();
     refreshChar(); updateProg(); schedRender();
   }
@@ -3341,16 +3438,16 @@ function setSyncStatus(status){
   const badge = document.getElementById('sync-badge');
   if(!badge) return;
   const cfg = {
-    idle:     { text: '',                    cls: '',              show: false },
-    synced:   { text: '✓ Synchronisiert',   cls: 'sync-ok',       show: true  },
-    pending:  { text: '· Ausstehend',        cls: 'sync-pending',  show: true  },
-    syncing:  { text: '↻ Sync läuft…',      cls: 'sync-progress', show: true  },
-    offline:  { text: '○ Offline',           cls: 'sync-offline',  show: true  },
-    error:    { text: '⚠ Fehler',            cls: 'sync-error',    show: true  },
+    idle:     { html: '',                                                                   cls: '',              show: false },
+    synced:   { html: '✓ Synchronisiert',                                                  cls: 'sync-ok',       show: true  },
+    pending:  { html: '· Ausstehend',                                                      cls: 'sync-pending',  show: true  },
+    syncing:  { html: '<span class="sync-spinner">↻</span> Sync läuft…',                  cls: 'sync-progress', show: true  },
+    offline:  { html: '○ Offline',                                                         cls: 'sync-offline',  show: true  },
+    error:    { html: '⚠ Fehler',                                                          cls: 'sync-error',    show: true  },
   };
   const c = cfg[status] || cfg.idle;
   badge.style.display = c.show ? 'flex' : 'none';
-  badge.textContent   = c.text;
+  badge.innerHTML     = c.html;
   badge.className     = 'sync-badge ' + c.cls;
 }
 
@@ -3405,7 +3502,12 @@ function updateAccountSection(){
       // Offer to resend verification if unverified
       const resendBtn = document.getElementById('account-resend-verify');
       if(resendBtn) resendBtn.style.display = isEmailUser && !verified ? 'inline-flex' : 'none';
+      // Show password-change section only for email/password accounts
+      const pwSection = document.getElementById('pw-change-section');
+      if(pwSection) pwSection.style.display = isEmailUser ? 'flex' : 'none';
     }
+    // Update glyph-count progress bar
+    updateGlyphLimitBar();
   } else {
     loggedIn.style.display  = 'none';
     loggedOut.style.display = 'flex';
@@ -3460,21 +3562,74 @@ async function loadFromFirebase(){
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
     const data = snap.val();
-    if(!data){ setSyncStatus('synced'); return; }
 
-    // If local glyphs exist AND cloud has glyphs → ask user what to do
-    const localCount  = Object.keys(store.g || {}).length;
-    const cloudCount  = data.glyphs ? Object.keys(JSON.parse(data.glyphs) || {}).length : 0;
-    if(localCount > 0 && cloudCount > 0){
-      _pendingFirebaseData = data;
-      document.getElementById('merge-local-count').textContent = localCount;
-      document.getElementById('merge-cloud-count').textContent = cloudCount;
-      document.getElementById('merge-modal').classList.add('open');
+    // ── CASE A: Cloud entirely empty → upload everything silently
+    if(!data){
+      setSyncStatus('synced');
+      if(store.count() > 0){
+        Object.keys(_dirty).forEach(k => _dirty[k] = true);
+        scheduleSync();
+        showToast('Zeichen werden in den Account hochgeladen');
+      }
+      return;
+    }
+
+    const localKeys  = Object.keys(store.g || {});
+    const localCount = localKeys.length;
+    const cloudGlyphsStr = data.glyphs || null;
+    let   cloudObj = {};
+    if(cloudGlyphsStr){ try{ cloudObj = JSON.parse(cloudGlyphsStr); }catch(_){} }
+    const cloudKeys  = Object.keys(cloudObj);
+    const cloudCount = cloudKeys.length;
+
+    // ── CASE B: No local glyphs → just apply cloud silently
+    if(localCount === 0){
+      applyFirebaseData(data, true);
       setSyncStatus('synced');
       return;
     }
 
-    applyFirebaseData(data, true /* initial load */);
+    // ── CASE C: Cloud has no glyphs → upload local silently
+    if(cloudCount === 0){
+      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
+      applyFirebaseData(dataWithoutGlyphs, true);
+      Object.keys(_dirty).forEach(k => _dirty[k] = true);
+      scheduleSync();
+      setSyncStatus('synced');
+      showToast('Lokale Zeichen werden in den Account hochgeladen');
+      return;
+    }
+
+    // ── CASE D: Same key sets → check if data is identical
+    const localStr = store.toJSON();
+    const localSet = new Set(localKeys);
+    const cloudSet = new Set(cloudKeys);
+    const sameKeys = localKeys.length === cloudKeys.length
+                     && localKeys.every(k => cloudSet.has(k));
+
+    if(sameKeys && localStr === cloudGlyphsStr){
+      // Perfectly identical → apply non-glyph data only, no prompt
+      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
+      applyFirebaseData(dataWithoutGlyphs, true);
+      setSyncStatus('synced');
+      return;
+    }
+
+    // ── CASE E: Cloud is a strict superset (has everything local has + more)
+    //    → apply cloud silently (user gets more chars, nothing is lost)
+    const allLocalInCloud = localKeys.every(k => cloudSet.has(k));
+    if(allLocalInCloud && cloudCount > localCount){
+      applyFirebaseData(data, true);
+      setSyncStatus('synced');
+      showToast('Konto-Zeichen geladen (' + cloudCount + ' Zeichen)');
+      return;
+    }
+
+    // ── CASE F: True conflict → show merge choice modal
+    _pendingFirebaseData = data;
+    document.getElementById('merge-local-count').textContent = localCount;
+    document.getElementById('merge-cloud-count').textContent = cloudCount;
+    document.getElementById('merge-modal').classList.add('open');
     setSyncStatus('synced');
   }catch(err){
     setSyncStatus(err.message === 'timeout' ? 'offline' : 'error');
@@ -3483,22 +3638,21 @@ async function loadFromFirebase(){
 }
 
 function mergeKeepLocal(){
-  // Keep local glyphs, apply only settings/prefs/customChars from cloud
+  // Keep local glyphs, apply only settings/prefs/customChars from cloud, then upload
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    // Apply everything except glyphs
     const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
     applyFirebaseData(dataWithoutGlyphs, true);
   }
-  // Push local glyphs up to the account
+  _dirty.glyphs = true;
   scheduleSync();
-  showToast('Lokale Zeichen werden in den Account hochgeladen');
+  showToast('Lokale Zeichen werden hochgeladen');
 }
 
 function mergeUseCloud(){
-  // Discard local, apply everything from cloud
+  // Discard local, load everything from cloud
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
@@ -3506,6 +3660,32 @@ function mergeUseCloud(){
     applyFirebaseData(d, true);
   }
   showToast('Konto-Zeichen wurden geladen');
+}
+
+function mergeCombine(){
+  // Merge: add cloud chars that local doesn't have yet; local takes precedence for conflicts
+  document.getElementById('merge-modal').classList.remove('open');
+  if(_pendingFirebaseData){
+    const d = _pendingFirebaseData;
+    _pendingFirebaseData = null;
+    // Apply non-glyph data first
+    const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
+    applyFirebaseData(dataWithoutGlyphs, true);
+    if(d.glyphs){
+      try{
+        const cloudObj = JSON.parse(d.glyphs);
+        // Add cloud chars that local doesn't have (local always wins on overlap)
+        Object.keys(cloudObj).forEach(ch => {
+          if(!store.has(ch)){ store.g[ch] = cloudObj[ch]; }
+        });
+        buildGrid(); refreshChar(); updateProg(); schedRender();
+      }catch(e){ console.warn('Merge-Fehler:', e); }
+    }
+  }
+  _dirty.glyphs = true;
+  scheduleSync();
+  showToast('Zeichen wurden zusammengeführt');
+  updateGlyphLimitBar();
 }
 
 // ── FIREBASE SUBSCRIBE (real-time, cross-device) ───────────
@@ -3608,40 +3788,62 @@ function scheduleSync(){
   syncTimer = setTimeout(pushToFirebase, 1500);
 }
 
+// Flush immediately on tab hide or page unload so no data is lost
+document.addEventListener('visibilitychange', () => {
+  if(document.hidden && syncTimer){
+    clearTimeout(syncTimer); syncTimer = null;
+    pushToFirebase();
+  }
+});
+window.addEventListener('beforeunload', () => {
+  if(syncTimer){ clearTimeout(syncTimer); syncTimer = null; pushToFirebase(); }
+});
+
 async function pushToFirebase(){
   if(!fbUser || !fbDb) return;
+  // Nothing dirty → nothing to send
+  if(!Object.values(_dirty).some(Boolean)) return;
+
   setSyncStatus('syncing');
   const timeoutMs = 12000;
+
+  // Snapshot which fields to send and reset flags before async write
+  const sending = Object.assign({}, _dirty);
+  Object.keys(_dirty).forEach(k => _dirty[k] = false);
+
   try{
-    const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
-    const pgc    = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim() || '#FFFFFF';
+    const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP };
+    if(sending.glyphs)      payload.glyphs      = store.toJSON();
+    if(sending.customChars) payload.customChars  = JSON.stringify(customChars);
+    if(sending.settings){
+      const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
+      const pgc    = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim() || '#FFFFFF';
+      payload.settings = JSON.stringify({
+        ls:  document.getElementById('ls-sl').value,
+        ws:  document.getElementById('ws-sl').value,
+        lh:  document.getElementById('lh-sl').value,
+        sw:  document.getElementById('sw-sl').value,
+        fs:  document.getElementById('fs-sl').value,
+        jit: document.getElementById('jit-sl').value,
+        ps:  document.getElementById('ps').value,
+        ink: document.getElementById('ink-col').value,
+        lin: currentLin, pgc, pgcBtn
+      });
+    }
+    if(sending.prefs){
+      payload.preferences = JSON.stringify({
+        unknownPref: unknownSymbolPref,
+        theme:       localStorage.getItem('mw-theme') || 'auto'
+      });
+    }
     await Promise.race([
-      fbDb.ref(`users/${fbUser.uid}`).update({
-        glyphs:      store.toJSON(),
-        customChars: JSON.stringify(customChars),
-        settings:    JSON.stringify({
-          ls:  document.getElementById('ls-sl').value,
-          ws:  document.getElementById('ws-sl').value,
-          lh:  document.getElementById('lh-sl').value,
-          sw:  document.getElementById('sw-sl').value,
-          fs:  document.getElementById('fs-sl').value,
-          jit: document.getElementById('jit-sl').value,
-          ps:  document.getElementById('ps').value,
-          ink: document.getElementById('ink-col').value,
-          lin: currentLin,
-          pgc, pgcBtn
-        }),
-        preferences: JSON.stringify({
-          unknownPref: unknownSymbolPref,
-          theme:       localStorage.getItem('mw-theme') || 'auto'
-        }),
-        _session:    SESSION_ID,
-        _updatedAt:  firebase.database.ServerValue.TIMESTAMP
-      }),
+      fbDb.ref(`users/${fbUser.uid}`).update(payload),
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
     setSyncStatus('synced');
   }catch(err){
+    // Restore dirty flags so next sync retries the failed fields
+    Object.keys(sending).forEach(k => { if(sending[k]) _dirty[k] = true; });
     setSyncStatus('error');
     console.error('Firebase Schreibfehler:', err);
     if(err.message !== 'timeout') showToast('Synchronisierung fehlgeschlagen');
@@ -3983,6 +4185,67 @@ async function resetAccount(){
   // ── Firebase init (after local data loaded) ──
   initFirebase();
 })();
+
+// ── GLYPH LIMIT BAR ─────────────────────────────────────────
+function updateGlyphLimitBar(){
+  const count = store ? store.count() : 0;
+  const pct   = Math.min(100, count / MAX_GLYPHS * 100);
+  const bar   = document.getElementById('acct-limit-bar');
+  const countEl = document.getElementById('acct-glyph-count');
+  const maxEl   = document.getElementById('acct-glyph-max');
+  if(bar){
+    bar.style.width = pct + '%';
+    bar.classList.toggle('warn',   pct >= 75 && pct < 90);
+    bar.classList.toggle('danger', pct >= 90);
+  }
+  if(countEl) countEl.textContent = count;
+  if(maxEl)   maxEl.textContent   = MAX_GLYPHS;
+}
+
+// ── PASSWORD CHANGE ──────────────────────────────────────────
+function togglePwChangeForm(){
+  const form = document.getElementById('pw-change-form');
+  if(!form) return;
+  const isOpen = form.style.display !== 'none' && form.style.display !== '';
+  form.style.display = isOpen ? 'none' : 'flex';
+  if(!isOpen){
+    const pwOld = document.getElementById('pw-old');
+    const pwNew = document.getElementById('pw-new');
+    const errEl = document.getElementById('pw-change-err');
+    if(pwOld) pwOld.value = '';
+    if(pwNew) pwNew.value = '';
+    if(errEl){ errEl.textContent = ''; errEl.classList.remove('show'); }
+  }
+}
+
+async function doChangePassword(){
+  if(!fbUser) return;
+  const pwOld = document.getElementById('pw-old')?.value?.trim() || '';
+  const pwNew = document.getElementById('pw-new')?.value || '';
+  const errEl = document.getElementById('pw-change-err');
+  const btn   = document.getElementById('pw-change-btn');
+
+  const setErr = msg => {
+    if(errEl){ errEl.textContent = msg; errEl.classList.add('show'); }
+  };
+  if(!pwOld || !pwNew){ setErr('Bitte beide Felder ausfüllen.'); return; }
+  if(pwNew.length < 6){ setErr('Das neue Passwort muss mindestens 6 Zeichen haben.'); return; }
+  if(errEl){ errEl.textContent = ''; errEl.classList.remove('show'); }
+  if(btn) btn.disabled = true;
+
+  try{
+    const credential = firebase.auth.EmailAuthProvider.credential(fbUser.email, pwOld);
+    await fbUser.reauthenticateWithCredential(credential);
+    await fbUser.updatePassword(pwNew);
+    togglePwChangeForm();
+    showToast('Passwort erfolgreich geändert ✓');
+  }catch(err){
+    const msg = firebaseErrorMsg(err.code) || 'Fehler beim Ändern des Passworts.';
+    setErr(msg);
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>

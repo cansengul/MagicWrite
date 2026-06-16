@@ -2298,15 +2298,16 @@ function stripMarkdown(t){
 // PAGE FORMATS (GoodNotes-style)
 // ═══════════════════════════════════════════════════════════
 const PAGE_FORMATS=[
-  {key:'gn-std',  name:'GoodNotes Standard', baseW:816,  baseH:1056},
-  {key:'a3',      name:'A3',                  baseW:1123, baseH:1587},
-  {key:'a4',      name:'A4',                  baseW:794,  baseH:1123},
-  {key:'a5',      name:'A5',                  baseW:559,  baseH:794 },
-  {key:'a6',      name:'A6',                  baseW:397,  baseH:559 },
-  {key:'a7',      name:'A7 (iPhone)',          baseW:280,  baseH:397 },
-  {key:'letter',  name:'Letter-Format',       baseW:816,  baseH:1056},
-  {key:'tabloid', name:'Tabloid-Format',      baseW:1056, baseH:1632},
-  {key:'custom',  name:'Angepasst',           baseW:794,  baseH:1123},
+  {key:'gn-notepad', name:'GN Notizblock',    baseW:816, baseH:1056, linStyle:'gn-notepad'},
+  {key:'gn-lined',   name:'GN Standard Liniert', baseW:816, baseH:1056, linStyle:'gn-lined'},
+  {key:'a3',         name:'A3',               baseW:1123, baseH:1587},
+  {key:'a4',         name:'A4',               baseW:794,  baseH:1123},
+  {key:'a5',         name:'A5',               baseW:559,  baseH:794 },
+  {key:'a6',         name:'A6',               baseW:397,  baseH:559 },
+  {key:'a7',         name:'A7 (iPhone)',       baseW:280,  baseH:397 },
+  {key:'letter',     name:'Letter-Format',    baseW:816,  baseH:1056},
+  {key:'tabloid',    name:'Tabloid-Format',   baseW:1056, baseH:1632},
+  {key:'custom',     name:'Angepasst',        baseW:794,  baseH:1123},
 ];
 
 let currentPageFormat='a4', currentOrientation='portrait';
@@ -2393,6 +2394,8 @@ function confirmPageFormat(){
     PAGE_W=isLand?fmt.baseH:fmt.baseW;
     PAGE_H=isLand?fmt.baseW:fmt.baseH;
   }
+  // Apply format-linked line style before rebuilding pages
+  if(fmt.linStyle) currentLin=fmt.linStyle;
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
@@ -2459,6 +2462,25 @@ function drawLin(ctx,w,h,type){
   const pgc=getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim()||'#FFFFFF';
   ctx.fillStyle=pgc;ctx.fillRect(0,0,w,h);
   if(type==='blank') return;
+
+  // ── GoodNotes Notizblock (notepad): tight ruled lines + red margin ──
+  if(type==='gn-notepad'){
+    ctx.strokeStyle='rgba(148,163,210,0.38)';ctx.lineWidth=0.85;
+    const sp=41;
+    for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    ctx.strokeStyle='rgba(210,60,60,0.52)';ctx.lineWidth=1.0;
+    const mx=62;ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
+    return;
+  }
+
+  // ── GoodNotes Standard Liniert: wider spaced lines, no margin ──
+  if(type==='gn-lined'){
+    ctx.strokeStyle='rgba(175,188,218,0.30)';ctx.lineWidth=0.85;
+    const sp=52;
+    for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    return;
+  }
+
   ctx.strokeStyle='rgba(148,163,210,0.32)';ctx.lineWidth=0.8;
   if(type==='ruled'||type==='grid'){
     const sp=48;

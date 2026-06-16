@@ -4142,6 +4142,8 @@ async function checkVerificationStatus(){
     await fbUser.reload();
     fbUser = fbAuth.currentUser;
     if(fbUser?.emailVerified){
+      // Force token refresh so Firebase rules see email_verified:true immediately
+      await fbUser.getIdToken(true);
       closeLoginModal();
       closeVerifyRequiredModal();
       showToast('E-Mail bestätigt ✓ Willkommen!');
@@ -4158,6 +4160,11 @@ async function checkVerificationStatus(){
 
 // ── VERIFY REQUIRED MODAL ──────────────────────────────────
 function openVerifyRequiredModal(){
+  // If login modal is already open (e.g. user just registered/signed in),
+  // the lms-verify screen inside it is sufficient — don't double-show.
+  const loginModal = document.getElementById('login-modal');
+  if(loginModal && loginModal.classList.contains('open')) return;
+
   const modal = document.getElementById('verify-required-modal');
   if(!modal) return;
   const emailEl = document.getElementById('verify-req-email-addr');
@@ -4175,6 +4182,8 @@ async function checkVerificationAndLoad(){
     await fbUser.reload();
     fbUser = fbAuth.currentUser;
     if(fbUser?.emailVerified){
+      // Force token refresh so Firebase rules see email_verified:true immediately
+      await fbUser.getIdToken(true);
       closeVerifyRequiredModal();
       showToast('E-Mail bestätigt ✓ Daten werden geladen…');
       updateAccountSection();

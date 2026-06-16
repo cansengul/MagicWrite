@@ -1645,16 +1645,12 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     </div>
     <div class="merge-btns">
       <button class="merge-btn primary" onclick="mergeCombine()">
-        Zusammenführen – Beides behalten
-        <span class="merge-btn-sub">Alle Zeichen beider Quellen werden kombiniert. Bei gleichen Buchstaben bleiben die lokalen Varianten erhalten.</span>
-      </button>
-      <button class="merge-btn" onclick="mergeKeepLocal()">
-        Lokal behalten &amp; hochladen
-        <span class="merge-btn-sub">Nur die Zeichen von diesem Gerät werden ins Konto übertragen. Konto-Zeichen werden überschrieben.</span>
+        Zusammenführen
+        <span class="merge-btn-sub">Lokale und Konto-Zeichen werden kombiniert. Bei Überschneidungen bleiben lokale Varianten erhalten.</span>
       </button>
       <button class="merge-btn" onclick="mergeUseCloud()">
-        Konto-Zeichen laden
-        <span class="merge-btn-sub">Die lokalen Zeichen werden verworfen und durch die des Kontos ersetzt.</span>
+        Konto laden
+        <span class="merge-btn-sub">Lokale Zeichen werden verworfen und durch die des Kontos ersetzt.</span>
       </button>
     </div>
   </div>
@@ -2991,20 +2987,28 @@ function closeImportModal(){
 // DELETE ALL  (local + Firebase)
 // ═══════════════════════════════════════════════════════════
 async function confirmDeleteAll(){
-  if(!confirm('Alle aufgenommenen Zeichen wirklich löschen?\nDiese Aktion löscht lokal und in der Cloud und kann nicht rückgängig gemacht werden.')) return;
+  if(!confirm('Alle aufgenommenen Zeichen und eigene Symbole wirklich löschen?\nDiese Aktion löscht lokal und in der Cloud und kann nicht rückgängig gemacht werden.')) return;
   store.g = {};
   await persistProfile();
-  // Also clear just glyphs in Firebase
-  if(fbUser && fbDb){
+  // Clear custom symbols too
+  customChars = [];
+  curCustomIdx = -1;
+  localStorage.setItem('mw-custom-chars', '[]');
+  buildCustomGrid();
+  // Sync deletion to Firebase
+  if(fbUser && fbDb && fbUser.emailVerified){
     try{
-      await fbDb.ref(`users/${fbUser.uid}/glyphs`).set(store.toJSON());
-      await fbDb.ref(`users/${fbUser.uid}/_updatedAt`).set(firebase.database.ServerValue.TIMESTAMP);
-      await fbDb.ref(`users/${fbUser.uid}/_session`).set(SESSION_ID);
+      await fbDb.ref(`users/${fbUser.uid}`).update({
+        glyphs:      store.toJSON(),
+        customChars: '[]',
+        _updatedAt:  firebase.database.ServerValue.TIMESTAMP,
+        _session:    SESSION_ID
+      });
     }catch(e){}
   }
-  buildGrid();refreshChar();schedRender();
+  buildGrid(); refreshChar(); updateProg(); schedRender();
   closeSettings();
-  showToast('Alle Zeichen gelöscht');
+  showToast('Alle Zeichen und eigene Symbole gelöscht');
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3774,18 +3778,30 @@ function mergeUseCloud(){
 }
 
 function mergeCombine(){
-  // Merge: add cloud chars that local doesn't have yet; local takes precedence for conflicts
+  // Merge: add cloud chars/symbols that local doesn't have yet; local wins on overlap
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    // Apply non-glyph data first (settings, prefs, customChars)
-    const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
-    applyFirebaseData(dataWithoutGlyphs, true);
+
+    // ── Merge customChars: add cloud symbols not already in local list ──
+    if(d.customChars){
+      try{
+        const cloudCC = JSON.parse(d.customChars);
+        cloudCC.forEach(ch => { if(!customChars.includes(ch)) customChars.push(ch); });
+        localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
+        _dirty.customChars = true;
+      }catch(e){ console.warn('Merge customChars Fehler:', e); }
+    }
+
+    // ── Apply settings/prefs from cloud (no glyphs, no customChars override) ──
+    const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
+    applyFirebaseData(dataSettingsOnly, true);
+
+    // ── Merge glyphs: add cloud chars local doesn't have ──
     if(d.glyphs){
       try{
         const cloudObj = JSON.parse(d.glyphs);
-        // Add cloud chars that local doesn't have (local always wins on overlap)
         Object.keys(cloudObj).forEach(ch => {
           if(!store.has(ch)){ store.g[ch] = cloudObj[ch]; }
         });
@@ -3793,7 +3809,7 @@ function mergeCombine(){
       }catch(e){ console.warn('Merge-Fehler:', e); }
     }
   }
-  buildCustomGrid(); // always refresh custom-char grid after merge
+  buildCustomGrid();
   _dirty.glyphs = true;
   scheduleSync();
   showToast('Zeichen wurden zusammengeführt');

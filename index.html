@@ -1773,13 +1773,13 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <div class="smodal-sec-title" style="margin-top:4px">Benutzerdefinierte Größe</div>
       <div style="display:flex;gap:8px;align-items:flex-end">
         <div style="flex:1;display:flex;flex-direction:column;gap:5px">
-          <label style="font-size:11px;color:var(--ink-soft);font-weight:500">Breite (px)</label>
-          <input id="fmt-custom-w" type="number" min="200" max="3000" value="794" class="fmt-custom-input" oninput="buildFmtGrid()">
+          <label style="font-size:11px;color:var(--ink-soft);font-weight:500">Breite (pt)</label>
+          <input id="fmt-custom-w" type="number" min="50" max="2400" value="595" class="fmt-custom-input" oninput="buildFmtGrid()">
         </div>
         <div style="font-size:18px;color:var(--ink-soft);padding-bottom:9px">×</div>
         <div style="flex:1;display:flex;flex-direction:column;gap:5px">
-          <label style="font-size:11px;color:var(--ink-soft);font-weight:500">Höhe (px)</label>
-          <input id="fmt-custom-h" type="number" min="200" max="3000" value="1123" class="fmt-custom-input" oninput="buildFmtGrid()">
+          <label style="font-size:11px;color:var(--ink-soft);font-weight:500">Höhe (pt)</label>
+          <input id="fmt-custom-h" type="number" min="50" max="2400" value="842" class="fmt-custom-input" oninput="buildFmtGrid()">
         </div>
       </div>
     </div>
@@ -2297,17 +2297,30 @@ function stripMarkdown(t){
 // ═══════════════════════════════════════════════════════════
 // PAGE FORMATS (GoodNotes-style)
 // ═══════════════════════════════════════════════════════════
+// pt↔px helpers (1 pt = 96/72 px)
+function ptToPx(pt){return Math.round(pt*96/72);}
+function pxToPt(px){return Math.round(px*72/96);}
+// Returns {w,h} in pt for the given orientation.
+// GoodNotes Standard has a unique landscape size, others just swap portrait dims.
+function getFmtPt(fmt,orientation){
+  if(orientation==='landscape'){
+    return {w:fmt.landW??fmt.portH, h:fmt.landH??fmt.portW};
+  }
+  return {w:fmt.portW, h:fmt.portH};
+}
+
+// portW/portH = portrait dimensions in pt
+// landW/landH = landscape dimensions in pt (optional; defaults to portH×portW)
 const PAGE_FORMATS=[
-  {key:'gn-notepad', name:'GN Notizblock',    baseW:816, baseH:1056, linStyle:'gn-notepad'},
-  {key:'gn-lined',   name:'GN Standard Liniert', baseW:816, baseH:1056, linStyle:'gn-lined'},
-  {key:'a3',         name:'A3',               baseW:1123, baseH:1587},
-  {key:'a4',         name:'A4',               baseW:794,  baseH:1123},
-  {key:'a5',         name:'A5',               baseW:559,  baseH:794 },
-  {key:'a6',         name:'A6',               baseW:397,  baseH:559 },
-  {key:'a7',         name:'A7 (iPhone)',       baseW:280,  baseH:397 },
-  {key:'letter',     name:'Letter-Format',    baseW:816,  baseH:1056},
-  {key:'tabloid',    name:'Tabloid-Format',   baseW:1056, baseH:1632},
-  {key:'custom',     name:'Angepasst',        baseW:794,  baseH:1123},
+  {key:'gn-std',   name:'GoodNotes Standard', portW:455, portH:588,  landW:651, landH:407, linStyle:'gn-lined'},
+  {key:'a3',       name:'A3',                 portW:842, portH:1191},
+  {key:'a4',       name:'A4',                 portW:595, portH:842},
+  {key:'a5',       name:'A5',                 portW:420, portH:595},
+  {key:'a6',       name:'A6',                 portW:298, portH:420},
+  {key:'a7',       name:'A7 (iPhone)',         portW:210, portH:298},
+  {key:'letter',   name:'Letter-Format',      portW:612, portH:792},
+  {key:'tabloid',  name:'Tabloid-Format',     portW:792, portH:1224},
+  {key:'custom',   name:'Angepasst',          portW:595, portH:842},
 ];
 
 let currentPageFormat='a4', currentOrientation='portrait';
@@ -2319,8 +2332,8 @@ function openFormatPicker(){
   if(_fmtPendingKey==='custom'){
     const cw=document.getElementById('fmt-custom-w');
     const ch=document.getElementById('fmt-custom-h');
-    if(cw) cw.value=PAGE_W;
-    if(ch) ch.value=PAGE_H;
+    if(cw) cw.value=pxToPt(PAGE_W);
+    if(ch) ch.value=pxToPt(PAGE_H);
   }
   updateFmtOriButtons();
   buildFmtGrid();
@@ -2350,15 +2363,15 @@ function buildFmtGrid(){
   if(!grid) return;
   grid.innerHTML='';
   PAGE_FORMATS.forEach(fmt=>{
-    const isLand=_fmtPendingOri==='landscape'&&fmt.key!=='custom';
-    let dispW=isLand?fmt.baseH:fmt.baseW;
-    let dispH=isLand?fmt.baseW:fmt.baseH;
+    let dispWpt, dispHpt;
     if(fmt.key==='custom'){
-      const cw=parseInt(document.getElementById('fmt-custom-w')?.value)||794;
-      const ch=parseInt(document.getElementById('fmt-custom-h')?.value)||1123;
-      dispW=cw; dispH=ch;
+      dispWpt=parseInt(document.getElementById('fmt-custom-w')?.value)||595;
+      dispHpt=parseInt(document.getElementById('fmt-custom-h')?.value)||842;
+    } else {
+      const pt=getFmtPt(fmt,_fmtPendingOri);
+      dispWpt=pt.w; dispHpt=pt.h;
     }
-    const ratio=dispW/dispH;
+    const ratio=dispWpt/dispHpt;
     const TMAX=38;
     let tw,th;
     if(ratio>=1){tw=TMAX;th=Math.round(TMAX/ratio);}
@@ -2368,7 +2381,7 @@ function buildFmtGrid(){
     const btn=document.createElement('button');
     btn.className='fmt-btn'+(isSelected?' on':'');
     btn.onclick=()=>selectFmtKey(fmt.key);
-    btn.innerHTML=`<div class="fmt-thumb" style="width:${tw}px;height:${th}px"></div><div class="fmt-name">${fmt.name}</div><div class="fmt-dim">${dispW}×${dispH}</div>`;
+    btn.innerHTML=`<div class="fmt-thumb" style="width:${tw}px;height:${th}px"></div><div class="fmt-name">${fmt.name}</div><div class="fmt-dim">${dispWpt}×${dispHpt} pt</div>`;
     grid.appendChild(btn);
   });
   const customSec=document.getElementById('fmt-custom-sec');
@@ -2386,13 +2399,12 @@ function confirmPageFormat(){
   currentPageFormat=_fmtPendingKey;
   currentOrientation=_fmtPendingOri;
   if(_fmtPendingKey==='custom'){
-    const cw=Math.max(200,Math.min(3000,parseInt(document.getElementById('fmt-custom-w')?.value)||794));
-    const ch=Math.max(200,Math.min(3000,parseInt(document.getElementById('fmt-custom-h')?.value)||1123));
-    PAGE_W=cw; PAGE_H=ch;
+    const cwPt=Math.max(50,Math.min(2400,parseInt(document.getElementById('fmt-custom-w')?.value)||595));
+    const chPt=Math.max(50,Math.min(2400,parseInt(document.getElementById('fmt-custom-h')?.value)||842));
+    PAGE_W=ptToPx(cwPt); PAGE_H=ptToPx(chPt);
   } else {
-    const isLand=_fmtPendingOri==='landscape';
-    PAGE_W=isLand?fmt.baseH:fmt.baseW;
-    PAGE_H=isLand?fmt.baseW:fmt.baseH;
+    const pt=getFmtPt(fmt,_fmtPendingOri);
+    PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
   }
   // Apply format-linked line style before rebuilding pages
   if(fmt.linStyle) currentLin=fmt.linStyle;
@@ -3028,14 +3040,13 @@ function loadSettings(){
       currentPageFormat=s.fmt;
       currentOrientation=s.ori||'portrait';
       if(s.fmt==='custom'){
-        PAGE_W=Math.max(200,Math.min(3000,parseInt(s.customW)||794));
-        PAGE_H=Math.max(200,Math.min(3000,parseInt(s.customH)||1123));
+        PAGE_W=parseInt(s.customW)||794;
+        PAGE_H=parseInt(s.customH)||1123;
       } else {
         const fmt=PAGE_FORMATS.find(f=>f.key===s.fmt);
         if(fmt){
-          const isLand=s.ori==='landscape';
-          PAGE_W=isLand?fmt.baseH:fmt.baseW;
-          PAGE_H=isLand?fmt.baseW:fmt.baseH;
+          const pt=getFmtPt(fmt,s.ori||'portrait');
+          PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
         }
       }
       _applyPageDimensions();
@@ -4172,14 +4183,13 @@ function applyFirebaseData(data, isInitialLoad){
           currentPageFormat=s.fmt;
           currentOrientation=s.ori||'portrait';
           if(s.fmt==='custom'){
-            PAGE_W=Math.max(200,Math.min(3000,parseInt(s.customW)||794));
-            PAGE_H=Math.max(200,Math.min(3000,parseInt(s.customH)||1123));
+            PAGE_W=parseInt(s.customW)||794;
+            PAGE_H=parseInt(s.customH)||1123;
           } else {
             const cfmt=PAGE_FORMATS.find(f=>f.key===s.fmt);
             if(cfmt){
-              const isLand=s.ori==='landscape';
-              PAGE_W=isLand?cfmt.baseH:cfmt.baseW;
-              PAGE_H=isLand?cfmt.baseW:cfmt.baseH;
+              const pt=getFmtPt(cfmt,s.ori||'portrait');
+              PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
             }
           }
           _applyPageDimensions();

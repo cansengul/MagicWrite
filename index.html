@@ -23,6 +23,7 @@
   --header-bg:#FFFFFF; --header-text:#000000; --canvas-bg:#FFFFFF;
   --doc-bg:#C7C7CC;
   --page-bg:#FFFFFF;
+  --page-fg:#D0D2D3;
   --page-w:794px; --page-h:1123px;
   --shadow:0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.05);
   --shadow-lg:0 6px 24px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.06);
@@ -387,9 +388,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 /* ── MULTI-PAGE SCROLL ── */
 .doc-scroll{
-  flex:1;overflow:auto;padding:28px;
+  flex:1;overflow:auto;background:var(--doc-bg);
+}
+#doc-inner{
   display:flex;flex-direction:column;align-items:center;gap:28px;
-  background:var(--doc-bg);
+  padding:28px;transform-origin:top left;width:max-content;min-width:100%;
 }
 .doc-wrap{
   position:relative;width:var(--page-w);height:var(--page-h);
@@ -402,6 +405,35 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   align-self:flex-start;margin-left:calc(50% - var(--page-w) / 2);margin-bottom:-20px;
   font-family:-apple-system,sans-serif;font-weight:500;
 }
+/* ── ZOOM CONTROLS ── */
+.zoom-ctrl{display:flex;align-items:center;gap:4px;margin-left:auto}
+.zoom-btn{
+  background:var(--paper-warm);border:0.5px solid var(--ui-border);
+  border-radius:var(--r-sm);padding:3px 7px;cursor:pointer;
+  font-size:13px;line-height:1;color:var(--ink);transition:var(--tr);
+  font-family:-apple-system,sans-serif;
+}
+.zoom-btn:hover{background:var(--accent-lt);color:var(--accent)}
+.zoom-lbl{font-size:11px;color:var(--ink-soft);min-width:34px;text-align:center;font-family:-apple-system,sans-serif}
+/* ── CUSTOM PAGE COLORS ── */
+.custom-col-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+.custom-col-add{
+  width:26px;height:26px;border-radius:50%;border:1.5px dashed var(--ui-border2);
+  background:none;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  font-size:16px;color:var(--ink-soft);transition:var(--tr);flex-shrink:0;
+}
+.custom-col-add:hover{border-color:var(--accent);color:var(--accent)}
+.custom-col-popup{
+  background:var(--paper-warm);border:0.5px solid var(--ui-border);
+  border-radius:var(--r);padding:10px;box-shadow:var(--shadow-lg);
+  display:flex;flex-direction:column;gap:7px;margin-top:6px;
+}
+.custom-col-popup input[type=text]{
+  border:0.5px solid var(--ui-border);border-radius:var(--r-sm);
+  padding:4px 7px;font-size:11px;background:var(--ui-bg);color:var(--ink);
+  font-family:-apple-system,sans-serif;outline:none;
+}
+.custom-col-popup input[type=text]:focus{border-color:var(--accent)}
 
 /* ── PAGE NAV ── */
 .page-nav{display:flex;align-items:center;gap:6px;margin-left:auto}
@@ -1138,6 +1170,12 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <button class="tbtn" onclick="clearDoc()" style="display:flex;align-items:center;gap:4px"><i data-lucide="trash-2" style="width:11px;height:11px"></i>Leeren</button>
     <div class="vsep" style="background:var(--ui-border);height:18px;width:1px"></div>
     <button class="tbtn" id="fmt-toolbar-btn" onclick="openFormatPicker()" style="display:flex;align-items:center;gap:4px" title="Seitenformat ändern"><i data-lucide="layout" style="width:11px;height:11px"></i><span id="fmt-toolbar-label">A4 · Hoch</span></button>
+    <div class="zoom-ctrl">
+      <button class="zoom-btn" onclick="zoomOut()" title="Herauszoomen">−</button>
+      <span class="zoom-lbl" id="zoom-lbl">100%</span>
+      <button class="zoom-btn" onclick="zoomIn()" title="Hereinzoomen">+</button>
+      <button class="zoom-btn" onclick="zoomFit()" title="Seite anpassen" style="font-size:10px;padding:3px 6px">Fit</button>
+    </div>
     <div class="page-nav">
       <button class="page-nav-btn" onclick="goPage(-1)">← Seite</button>
       <span class="page-nav-lbl" id="page-lbl">Seite 1 / 1</span>
@@ -1145,7 +1183,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     </div>
   </div>
 
-  <div class="doc-scroll" id="doc-scroll"></div>
+  <div class="doc-scroll" id="doc-scroll"><div id="doc-inner"></div></div>
 
   <div class="text-bar">
     <textarea id="txt" placeholder="Text eingeben – wird sofort als Handschrift gerendert…&#10;ChatGPT-Text (Markdown) einfach einsetzen – Formatierung wird automatisch entfernt." oninput="schedRender()"></textarea>
@@ -1161,10 +1199,22 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   <div class="psec">
     <div class="plabel">Seitenfarbe</div>
     <div class="pg-swatches">
-      <button class="pg-swatch on" id="pgc-white"  title="Weiß"      style="background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.18)" onclick="setPageColor('#FFFFFF','pgc-white')"></button>
-      <button class="pg-swatch"    id="pgc-warm"   title="Warmweiß"  style="background:#FDF6E3;box-shadow:0 1px 3px rgba(0,0,0,0.12)" onclick="setPageColor('#FDF6E3','pgc-warm')"></button>
-      <button class="pg-swatch"    id="pgc-black"  title="Schwarz"   style="background:#1A1A1A;box-shadow:0 1px 3px rgba(0,0,0,0.35)" onclick="setPageColor('#1A1A1A','pgc-black')"></button>
+      <button class="pg-swatch on" id="pgc-white"  title="GN Weiß"   style="background:#FFFFFF;box-shadow:0 1px 3px rgba(0,0,0,0.18)" onclick="setPageColor('#FFFFFF','#D0D2D3','pgc-white')"></button>
+      <button class="pg-swatch"    id="pgc-yellow" title="GN Gelb"   style="background:#F8F7E9;box-shadow:0 1px 3px rgba(0,0,0,0.12)" onclick="setPageColor('#F8F7E9','#D0D2D3','pgc-yellow')"></button>
+      <button class="pg-swatch"    id="pgc-black"  title="GN Schwarz" style="background:#333333;box-shadow:0 1px 3px rgba(0,0,0,0.35)" onclick="setPageColor('#333333','#58595B','pgc-black')"></button>
     </div>
+    <div class="custom-col-row" id="custom-col-row"></div>
+    <div id="custom-col-popup" class="custom-col-popup" style="display:none">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input type="color" id="custom-col-picker" value="#e8e0d0" style="width:36px;height:28px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer">
+        <input type="text" id="custom-col-name" placeholder="Name (z.B. Beige)" style="flex:1">
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-p" style="flex:1;font-size:10px;padding:4px 8px" onclick="confirmCustomColor()">Speichern</button>
+        <button class="btn btn-o btn-sm" style="font-size:10px;padding:4px 8px" onclick="document.getElementById('custom-col-popup').style.display='none'">Abbrechen</button>
+      </div>
+    </div>
+    <button class="custom-col-add" onclick="toggleCustomColPopup()" title="Eigene Farbe hinzufügen">+</button>
   </div>
   <div class="pdivider"></div>
   <div class="psec" id="psec-alphabet">
@@ -2422,7 +2472,30 @@ function confirmPageFormat(){
 function _applyPageDimensions(){
   document.documentElement.style.setProperty('--page-w',PAGE_W+'px');
   document.documentElement.style.setProperty('--page-h',PAGE_H+'px');
+  // Auto-fit zoom after a short layout tick so clientWidth is updated
+  requestAnimationFrame(fitPageToView);
 }
+
+// ── ZOOM ──────────────────────────────────────────────────
+let currentZoom=1.0;
+function fitPageToView(){
+  const scroll=document.getElementById('doc-scroll');
+  if(!scroll) return;
+  const avail=scroll.clientWidth;
+  const needed=PAGE_W+56; // 28px padding each side
+  const z=needed>avail?avail/needed:1.0;
+  currentZoom=Math.round(Math.max(0.15,Math.min(4.0,z))*100)/100;
+  _applyZoom();
+}
+function _applyZoom(){
+  const inner=document.getElementById('doc-inner');
+  if(inner) inner.style.zoom=currentZoom;
+  const lbl=document.getElementById('zoom-lbl');
+  if(lbl) lbl.textContent=Math.round(currentZoom*100)+'%';
+}
+function zoomIn(){currentZoom=Math.round(Math.min(4.0,currentZoom+0.1)*100)/100;_applyZoom();}
+function zoomOut(){currentZoom=Math.round(Math.max(0.15,currentZoom-0.1)*100)/100;_applyZoom();}
+function zoomFit(){fitPageToView();}
 
 function updateFmtToolbarLabel(){
   const lbl=document.getElementById('fmt-toolbar-label');
@@ -2440,7 +2513,7 @@ let PAGE_W=794, PAGE_H=1123;
 let pagesData=[], curPageIdx=0, currentLin='ruled';
 
 function ensurePages(n){
-  const scroll=document.getElementById('doc-scroll');
+  const scroll=document.getElementById('doc-inner');
   while(pagesData.length<n){
     const pg=pagesData.length;
     const lbl=document.createElement('div');lbl.className='page-label';lbl.textContent='Seite '+(pg+1);
@@ -2475,42 +2548,49 @@ function drawLin(ctx,w,h,type){
   ctx.fillStyle=pgc;ctx.fillRect(0,0,w,h);
   if(type==='blank') return;
 
+  // Derive RGBA from --page-fg CSS variable
+  const fgHex=(getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3').replace('#','');
+  const fgR=parseInt(fgHex.slice(0,2),16);
+  const fgG=parseInt(fgHex.slice(2,4),16);
+  const fgB=parseInt(fgHex.slice(4,6),16);
+  const fgLine=(a=>`rgba(${fgR},${fgG},${fgB},${a})`);
+
   // ── GoodNotes Notizblock (notepad): tight ruled lines + red margin ──
   if(type==='gn-notepad'){
-    ctx.strokeStyle='rgba(148,163,210,0.38)';ctx.lineWidth=0.85;
-    const sp=41;
+    ctx.strokeStyle=fgLine(0.45);ctx.lineWidth=0.85;
+    const sp=Math.round(ptToPx(14)); // ~19px ≈ tight college-ruled
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
     ctx.strokeStyle='rgba(210,60,60,0.52)';ctx.lineWidth=1.0;
-    const mx=62;ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
+    const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
     return;
   }
 
-  // ── GoodNotes Standard Liniert: wider spaced lines, no margin ──
+  // ── GoodNotes Standard Liniert: ~34 lines on standard page, no margin ──
   if(type==='gn-lined'){
-    ctx.strokeStyle='rgba(175,188,218,0.30)';ctx.lineWidth=0.85;
-    const sp=52;
+    ctx.strokeStyle=fgLine(0.42);ctx.lineWidth=0.85;
+    const sp=Math.round(ptToPx(17)); // ≈23px → ~34 lines on GN Standard 588pt page
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
     return;
   }
 
-  ctx.strokeStyle='rgba(148,163,210,0.32)';ctx.lineWidth=0.8;
+  ctx.strokeStyle=fgLine(0.36);ctx.lineWidth=0.8;
   if(type==='ruled'||type==='grid'){
-    const sp=48;
+    const sp=Math.round(ptToPx(36)); // ~48px
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   }
   if(type==='grid'){
-    const sp=40;
+    const sp=Math.round(ptToPx(30)); // ~40px
     for(let x=sp;x<w;x+=sp){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
   }
   if(type==='dot'){
-    ctx.fillStyle='rgba(100,116,180,0.30)';
-    const sx=40,sy=40;
+    ctx.fillStyle=fgLine(0.36);
+    const sx=Math.round(ptToPx(30)),sy=Math.round(ptToPx(30));
     for(let y=sy;y<h;y+=sy)for(let x=sx;x<w;x+=sx){
       ctx.beginPath();ctx.arc(x,y,1.1,0,Math.PI*2);ctx.fill();
     }
   }
   ctx.strokeStyle='rgba(210,95,85,0.22)';ctx.lineWidth=0.8;
-  const mx=62;ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
+  const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
 }
 
 function setLin(t){
@@ -2935,13 +3015,58 @@ function switchTab(t){
 // ═══════════════════════════════════════════════════════════
 // PAGE COLOR
 // ═══════════════════════════════════════════════════════════
-function setPageColor(hex,btnId){
+function setPageColor(hex,fg,btnId){
   document.documentElement.style.setProperty('--page-bg',hex);
+  document.documentElement.style.setProperty('--page-fg',fg||'#D0D2D3');
   document.querySelectorAll('.pg-swatch').forEach(b=>b.classList.remove('on'));
-  const btn=document.getElementById(btnId);
-  if(btn) btn.classList.add('on');
+  if(btnId){const btn=document.getElementById(btnId);if(btn)btn.classList.add('on');}
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,currentLin));
   saveSettings();
+}
+
+// ── CUSTOM PAGE COLORS ────────────────────────────────────
+let customPageColors=[];
+try{customPageColors=JSON.parse(localStorage.getItem('mw-custom-colors')||'[]');}catch(e){}
+
+function toggleCustomColPopup(){
+  const p=document.getElementById('custom-col-popup');
+  if(p) p.style.display=p.style.display==='none'?'block':'none';
+}
+function confirmCustomColor(){
+  const hex=document.getElementById('custom-col-picker')?.value||'#cccccc';
+  const name=(document.getElementById('custom-col-name')?.value.trim()||hex);
+  customPageColors.push({hex,fg:'#D0D2D3',name});
+  localStorage.setItem('mw-custom-colors',JSON.stringify(customPageColors));
+  renderCustomColors();
+  document.getElementById('custom-col-popup').style.display='none';
+  document.getElementById('custom-col-name').value='';
+  _dirty.settings=true; scheduleSync();
+}
+function removeCustomColor(idx){
+  customPageColors.splice(idx,1);
+  localStorage.setItem('mw-custom-colors',JSON.stringify(customPageColors));
+  renderCustomColors();
+  _dirty.settings=true; scheduleSync();
+}
+function renderCustomColors(){
+  const row=document.getElementById('custom-col-row');
+  if(!row) return;
+  row.innerHTML='';
+  customPageColors.forEach((c,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;display:inline-flex;';
+    const btn=document.createElement('button');
+    btn.className='pg-swatch';
+    btn.title=c.name;
+    btn.style.cssText=`background:${c.hex};box-shadow:0 1px 3px rgba(0,0,0,0.15)`;
+    btn.onclick=()=>setPageColor(c.hex,c.fg||'#D0D2D3','');
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:-4px;right:-4px;width:12px;height:12px;border-radius:50%;background:#FF3B30;color:#fff;border:none;cursor:pointer;font-size:8px;line-height:12px;padding:0;display:flex;align-items:center;justify-content:center;';
+    del.innerHTML='×';del.title='Entfernen';
+    del.onclick=(e)=>{e.stopPropagation();removeCustomColor(i);};
+    wrap.appendChild(btn);wrap.appendChild(del);
+    row.appendChild(wrap);
+  });
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3017,7 +3142,9 @@ function saveSettings(){
     ink: document.getElementById('ink-col').value,
     lin: currentLin,
     pgc: pgc,
+    pgf: getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3',
     pgcBtn: pgcBtn,
+    customColors: JSON.stringify(customPageColors),
     fmt: currentPageFormat,
     ori: currentOrientation,
     customW: PAGE_W,
@@ -3063,7 +3190,9 @@ function loadSettings(){
     if(s.ps  != null){setEl('ps',s.ps);     const lbl=document.getElementById('ps-val'); if(lbl)lbl.textContent=s.ps;}
     if(s.ink != null){const el=document.getElementById('ink-col');if(el)el.value=s.ink;}
     if(s.lin)  setLin(s.lin);
-    if(s.pgcBtn&&s.pgc) setPageColor(s.pgc,s.pgcBtn);
+    if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'');
+    if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
+    renderCustomColors();
   }catch(e){}
 }
 
@@ -3318,16 +3447,21 @@ async function exportPDF(){
     await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
   }
   const {jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  // Use actual page pt dimensions converted to mm (1pt = 25.4/72 mm)
+  const _fmtObj=PAGE_FORMATS.find(f=>f.key===currentPageFormat)||PAGE_FORMATS[0];
+  const _fmtPt=getFmtPt(_fmtObj,currentOrientation);
+  const mmW=parseFloat((_fmtPt.w*25.4/72).toFixed(3));
+  const mmH=parseFloat((_fmtPt.h*25.4/72).toFixed(3));
+  const doc=new jsPDF({orientation:mmW>mmH?'landscape':'portrait',unit:'mm',format:[mmW,mmH]});
   for(let i=0;i<pagesData.length;i++){
-    if(i>0) doc.addPage();
+    if(i>0) doc.addPage([mmW,mmH]);
     const tmp=document.createElement('canvas');
     tmp.width=PAGE_W*2;tmp.height=PAGE_H*2;
     const ctx=tmp.getContext('2d');
     ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim()||'#FFFFFF';ctx.fillRect(0,0,tmp.width,tmp.height);
     ctx.drawImage(pagesData[i].bgCv,0,0,tmp.width,tmp.height);
     ctx.drawImage(pagesData[i].inkCv,0,0,tmp.width,tmp.height);
-    doc.addImage(tmp.toDataURL('image/jpeg',0.93),'JPEG',0,0,210,297);
+    doc.addImage(tmp.toDataURL('image/jpeg',0.93),'JPEG',0,0,mmW,mmH);
   }
   doc.save('scriptura_'+Date.now()+'.pdf');
   showToast('PDF exportiert ✓ ('+pagesData.length+' Seite'+(pagesData.length>1?'n':'')+')');
@@ -3352,7 +3486,10 @@ async function exportGoodNotesInk(){
   const {PDFDocument,PDFName,PDFRawStream,rgb}=window.PDFLib;
   const pdfDoc=await PDFDocument.create();
 
-  const PT_W=595.28, PT_H=841.89;
+  // Use actual format pt dimensions so GoodNotes imports at the correct size
+  const _gnFmtObj=PAGE_FORMATS.find(f=>f.key===currentPageFormat)||PAGE_FORMATS[0];
+  const _gnFmtPt=getFmtPt(_gnFmtObj,currentOrientation);
+  const PT_W=_gnFmtPt.w, PT_H=_gnFmtPt.h;
   const SX=PT_W/PAGE_W, SY=PT_H/PAGE_H;
 
   const hex=engine.cfg.inkColor.replace('#','');
@@ -3364,7 +3501,7 @@ async function exportGoodNotesInk(){
   const pageCount=(plan.length?Math.max(...plan.map(s=>s.page))+1:1);
   const pdfPages=[];
   for(let i=0;i<pageCount;i++){
-    const page=pdfDoc.addPage([PT_W,PT_H]);
+    const page=pdfDoc.addPage([PT_W,PT_H]); // exact format pt size
     const pgHex=(getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim()||'#FFFFFF').replace('#','');
     const pgR=parseInt(pgHex.slice(0,2),16)/255;
     const pgG=parseInt(pgHex.slice(2,4),16)/255;
@@ -4202,13 +4339,11 @@ function applyFirebaseData(data, isInitialLoad){
           currentLin = s.lin;
           pagesData.forEach(p => drawLin(p.bgCtx, PAGE_W, PAGE_H, s.lin));
         }
-        if(s.pgcBtn && s.pgc){
-          document.documentElement.style.setProperty('--page-bg', s.pgc);
-          document.querySelectorAll('.pg-swatch').forEach(b => b.classList.remove('on'));
-          const swBtn = document.getElementById(s.pgcBtn);
-          if(swBtn) swBtn.classList.add('on');
-          pagesData.forEach(p => drawLin(p.bgCtx, PAGE_W, PAGE_H, currentLin));
+        if(s.pgc){
+          setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'');
         }
+        if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
+        renderCustomColors();
         // Save to cookie (without triggering another cloud sync)
         const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
         document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
@@ -4277,6 +4412,8 @@ async function pushToFirebase(){
         ps:  document.getElementById('ps').value,
         ink: document.getElementById('ink-col').value,
         lin: currentLin, pgc, pgcBtn,
+        pgf: getComputedStyle(document.documentElement).getPropertyValue('--page-fg').trim()||'#D0D2D3',
+        customColors: JSON.stringify(customPageColors),
         fmt: currentPageFormat, ori: currentOrientation,
         customW: PAGE_W, customH: PAGE_H
       });
@@ -4662,6 +4799,8 @@ async function resetAccount(){
   switchTab('doc');
   document.querySelectorAll('input[type=range]').forEach(syncPct);
   loadSettings();
+  renderCustomColors();
+  requestAnimationFrame(fitPageToView);
   loadCustomChars();
   const ci=document.getElementById('custom-input');
   if(ci) ci.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addCustomChar();}});

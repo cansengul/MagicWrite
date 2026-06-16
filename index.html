@@ -2754,7 +2754,7 @@ function drawLin(ctx,w,h,type){
 
   // ── GoodNotes Notizblock (notepad): tight ruled lines + red margin ──
   if(type==='gn-notepad'){
-    ctx.strokeStyle=fgLine(0.45);ctx.lineWidth=0.85;
+    ctx.strokeStyle=fgLine(0.45);ctx.lineWidth=0.8;
     const sp=Math.round(ptToPx(14)); // ~19px ≈ tight college-ruled
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
     ctx.strokeStyle=getStripeColor();ctx.lineWidth=1.0;
@@ -2764,7 +2764,7 @@ function drawLin(ctx,w,h,type){
 
   // ── GoodNotes Standard Liniert: ~34 lines on standard page + red margin ──
   if(type==='gn-lined'){
-    ctx.strokeStyle=fgLine(0.42);ctx.lineWidth=0.85;
+    ctx.strokeStyle=fgLine(0.42);ctx.lineWidth=0.8;
     const sp=Math.round(ptToPx(17)); // ≈23px → ~34 lines on GN Standard 588pt page
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
     ctx.strokeStyle=getStripeColor();ctx.lineWidth=1.0;
@@ -2778,7 +2778,7 @@ function drawLin(ctx,w,h,type){
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   }
   if(type==='grid'){
-    const sp=Math.round(ptToPx(30)); // ~40px
+    const sp=Math.round(ptToPx(36)); // same pitch as horizontal lines → square cells
     for(let x=sp;x<w;x+=sp){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
   }
   if(type==='dot'){
@@ -2798,7 +2798,9 @@ function drawLin(ctx,w,h,type){
 function setLin(t){
   currentLin=t;
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
+  _snapTextToFormatGrid();
   saveSettings();
+  schedRender();
 }
 
 function erasePointer(e,pg){

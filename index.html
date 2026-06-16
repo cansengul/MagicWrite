@@ -2591,8 +2591,8 @@ function _snapTextToFormatGrid(){
   else if(currentLin==='ruled'||currentLin==='grid') sp=Math.round(ptToPx(36));
   else if(currentLin==='dot') sp=Math.round(ptToPx(30));
   if(!sp) return; // blank — nothing to snap to
-  // Smallest m such that lines snap to every m-th rule
-  const m=Math.max(1,Math.round(capH/sp))||1;
+  // Smallest m such that m×sp ≥ capH (ceil ensures newLH ≥ 1.0, avoiding slider clamp)
+  const m=Math.max(1,Math.ceil(capH/sp))||1;
   const lineH=m*sp;
   const newLH=parseFloat((lineH/capH).toFixed(2));
   const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));

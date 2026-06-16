@@ -1221,6 +1221,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <input type="color" id="custom-col-picker" value="#e8e0d0" style="width:36px;height:28px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer">
         <input type="text" id="custom-col-name" placeholder="Name (z.B. Beige)" style="flex:1">
       </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <label style="font-size:10px;color:var(--ink-soft);white-space:nowrap">Linienfarbe:</label>
+        <input type="color" id="custom-fg-picker" value="#D0D2D3" style="width:36px;height:28px;padding:0;border:none;border-radius:var(--r-sm);cursor:pointer;flex-shrink:0">
+        <span style="font-size:9.5px;color:var(--ink-soft)">Linien &amp; Raster</span>
+      </div>
       <div style="display:flex;gap:6px">
         <button class="btn btn-p" style="flex:1;font-size:10px;padding:4px 8px" onclick="confirmCustomColor()">Speichern</button>
         <button class="btn btn-o btn-sm" style="font-size:10px;padding:4px 8px" onclick="document.getElementById('custom-col-popup').style.display='none'">Abbrechen</button>
@@ -2457,10 +2462,14 @@ function selectFmtKey(key){
 
 // Snap text baseline and line height to the current format's rule grid
 function _snapTextToFormatGrid(){
-  if(currentLin!=='gn-lined'&&currentLin!=='gn-notepad') return;
   const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
   const capH=(N.BL-N.CAP)/N.H*fontSize;
-  const sp=currentLin==='gn-lined'?ptToPx(17):ptToPx(14);
+  let sp=0;
+  if(currentLin==='gn-lined') sp=ptToPx(17);
+  else if(currentLin==='gn-notepad') sp=ptToPx(14);
+  else if(currentLin==='ruled'||currentLin==='grid') sp=Math.round(ptToPx(36));
+  else if(currentLin==='dot') sp=Math.round(ptToPx(30));
+  if(!sp) return; // blank — nothing to snap to
   // Smallest m such that lines snap to every m-th rule
   const m=Math.max(1,Math.round(capH/sp))||1;
   const lineH=m*sp;
@@ -2577,7 +2586,13 @@ function ensurePages(n){
     const gnBtn=document.createElement('button');
     gnBtn.className='page-exp-btn';gnBtn.title='GoodNotes PDF (transparent) herunterladen';
     gnBtn.innerHTML='GN PDF';
+    gnBtn.draggable=true;
     gnBtn.onclick=(e)=>{e.stopPropagation();exportPageGoodNotesPDF(pg);};
+    gnBtn.addEventListener('dragstart',e=>{
+      e.dataTransfer.effectAllowed='copy';
+      e.dataTransfer.setData('text/plain','magicwrite_gn_p'+(pg+1)+'.pdf');
+      showToast('GN PDF – In GoodNotes: + → Importieren → Datei');
+    });
     ov.appendChild(pngBtn);ov.appendChild(gnBtn);
     wrap.appendChild(ov);
     scroll.appendChild(wrap);
@@ -2647,7 +2662,7 @@ function drawLin(ctx,w,h,type){
       ctx.beginPath();ctx.arc(x,y,1.1,0,Math.PI*2);ctx.fill();
     }
   }
-  ctx.strokeStyle='rgba(210,95,85,0.22)';ctx.lineWidth=0.8;
+  ctx.strokeStyle='rgba(210,60,60,0.50)';ctx.lineWidth=1.0;
   const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
 }
 
@@ -2819,7 +2834,7 @@ function refreshChar(){
     const cv=document.createElement('canvas');cv.width=100;cv.height=100;
     drawPreview(cv,v);w.appendChild(cv);
     const db=document.createElement('button');db.className='vdel';db.textContent='×';
-    db.onclick=()=>{store.del(ch,i);persistProfile();refreshChar();updateProg();schedRender()};
+    db.onclick=()=>{store.del(ch,i);buildGrid();persistProfile();refreshChar();updateProg();schedRender()};
     w.appendChild(db);row.appendChild(w);
   });
   updateProg();
@@ -3092,8 +3107,9 @@ function toggleCustomColPopup(){
 }
 function confirmCustomColor(){
   const hex=document.getElementById('custom-col-picker')?.value||'#cccccc';
+  const fg=document.getElementById('custom-fg-picker')?.value||'#D0D2D3';
   const name=(document.getElementById('custom-col-name')?.value.trim()||hex);
-  customPageColors.push({hex,fg:'#D0D2D3',name});
+  customPageColors.push({hex,fg,name});
   localStorage.setItem('mw-custom-colors',JSON.stringify(customPageColors));
   renderCustomColors();
   document.getElementById('custom-col-popup').style.display='none';
@@ -3232,8 +3248,12 @@ function loadSettings(){
         if(fmt){
           const pt=getFmtPt(fmt,s.ori||'portrait');
           PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
+          // Pre-set currentLin so ensurePages draws pages with the correct rule style
+          if(fmt.linStyle) currentLin=fmt.linStyle;
         }
       }
+      // Also honour the saved lin if provided (takes priority over format default)
+      if(s.lin) currentLin=s.lin;
       _applyPageDimensions();
       ensurePages(0);
       ensurePages(1);
@@ -4465,8 +4485,12 @@ function applyFirebaseData(data, isInitialLoad){
             if(cfmt){
               const pt=getFmtPt(cfmt,s.ori||'portrait');
               PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
+              // Pre-set currentLin so ensurePages draws the correct rule style
+              if(cfmt.linStyle) currentLin=cfmt.linStyle;
             }
           }
+          // Saved lin overrides format default
+          if(s.lin) currentLin=s.lin;
           _applyPageDimensions();
           ensurePages(0);
           ensurePages(1);

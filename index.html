@@ -405,6 +405,18 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   align-self:flex-start;margin-left:calc(50% - var(--page-w) / 2);margin-bottom:-20px;
   font-family:-apple-system,sans-serif;font-weight:500;
 }
+/* ── PER-PAGE EXPORT BUTTON ── */
+.page-export-overlay{
+  position:absolute;top:6px;right:6px;display:flex;gap:4px;opacity:0;
+  transition:opacity 0.18s;z-index:10;
+}
+.doc-wrap:hover .page-export-overlay{opacity:1}
+.page-exp-btn{
+  background:rgba(0,0,0,0.55);color:#fff;border:none;border-radius:6px;
+  padding:4px 7px;cursor:pointer;font-size:10px;display:flex;align-items:center;
+  gap:3px;backdrop-filter:blur(4px);transition:background 0.15s;
+}
+.page-exp-btn:hover{background:rgba(0,0,0,0.82)}
 /* ── ZOOM CONTROLS ── */
 .zoom-ctrl{display:flex;align-items:center;gap:4px;margin-left:auto}
 .zoom-btn{
@@ -2443,6 +2455,28 @@ function selectFmtKey(key){
   buildFmtGrid();
 }
 
+// Snap text baseline and line height to the current format's rule grid
+function _snapTextToFormatGrid(){
+  if(currentLin!=='gn-lined'&&currentLin!=='gn-notepad') return;
+  const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
+  const capH=(N.BL-N.CAP)/N.H*fontSize;
+  const sp=currentLin==='gn-lined'?ptToPx(17):ptToPx(14);
+  // Smallest m such that lines snap to every m-th rule
+  const m=Math.max(1,Math.round(capH/sp))||1;
+  const lineH=m*sp;
+  const newLH=parseFloat((lineH/capH).toFixed(2));
+  const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));
+  const newMT=Math.max(4,k*sp-capH);
+  engine.cfg.marginT=newMT;
+  engine.cfg.lineHeight=newLH;
+  engine.cfg.marginL=ptToPx(46)+12; // right of red margin line
+  // Reflect snapped lineHeight on slider
+  const lhEl=document.getElementById('lh-sl');
+  const lhVal=document.getElementById('lh-val');
+  if(lhEl){lhEl.value=newLH;syncPct(lhEl);}
+  if(lhVal) lhVal.textContent=newLH.toFixed(1);
+}
+
 function confirmPageFormat(){
   const fmt=PAGE_FORMATS.find(f=>f.key===_fmtPendingKey);
   if(!fmt) return;
@@ -2461,6 +2495,7 @@ function confirmPageFormat(){
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
+  _snapTextToFormatGrid();
   schedRender();
   saveSettings();
   closeFormatPicker();
@@ -2524,6 +2559,27 @@ function ensurePages(n){
     const inkCv=document.createElement('canvas');inkCv.width=PAGE_W;inkCv.height=PAGE_H;
     const uiCv=document.createElement('canvas');uiCv.width=PAGE_W;uiCv.height=PAGE_H;
     wrap.appendChild(bgCv);wrap.appendChild(inkCv);wrap.appendChild(uiCv);
+    // Per-page export overlay (visible on hover)
+    const ov=document.createElement('div');ov.className='page-export-overlay';
+    const pngBtn=document.createElement('button');
+    pngBtn.className='page-exp-btn';pngBtn.title='Transparentes PNG herunterladen';
+    pngBtn.innerHTML='PNG';
+    pngBtn.draggable=true;
+    pngBtn.onclick=(e)=>{e.stopPropagation();exportPagePNG(pg);};
+    pngBtn.addEventListener('dragstart',e=>{
+      e.dataTransfer.effectAllowed='copy';
+      const tmp=document.createElement('canvas');tmp.width=PAGE_W;tmp.height=PAGE_H;
+      const ctx2=tmp.getContext('2d');ctx2.drawImage(inkCv,0,0);
+      const url=tmp.toDataURL('image/png');
+      e.dataTransfer.setData('text/uri-list',url);
+      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+    });
+    const gnBtn=document.createElement('button');
+    gnBtn.className='page-exp-btn';gnBtn.title='GoodNotes PDF (transparent) herunterladen';
+    gnBtn.innerHTML='GN PDF';
+    gnBtn.onclick=(e)=>{e.stopPropagation();exportPageGoodNotesPDF(pg);};
+    ov.appendChild(pngBtn);ov.appendChild(gnBtn);
+    wrap.appendChild(ov);
     scroll.appendChild(wrap);
 
     const bgCtx=bgCv.getContext('2d');
@@ -2565,11 +2621,13 @@ function drawLin(ctx,w,h,type){
     return;
   }
 
-  // ── GoodNotes Standard Liniert: ~34 lines on standard page, no margin ──
+  // ── GoodNotes Standard Liniert: ~34 lines on standard page + red margin ──
   if(type==='gn-lined'){
     ctx.strokeStyle=fgLine(0.42);ctx.lineWidth=0.85;
     const sp=Math.round(ptToPx(17)); // ≈23px → ~34 lines on GN Standard 588pt page
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    ctx.strokeStyle='rgba(210,60,60,0.52)';ctx.lineWidth=1.0;
+    const mx=ptToPx(46);ctx.beginPath();ctx.moveTo(mx,0);ctx.lineTo(mx,h);ctx.stroke();
     return;
   }
 
@@ -2761,7 +2819,7 @@ function refreshChar(){
     const cv=document.createElement('canvas');cv.width=100;cv.height=100;
     drawPreview(cv,v);w.appendChild(cv);
     const db=document.createElement('button');db.className='vdel';db.textContent='×';
-    db.onclick=()=>{store.del(ch,i);refreshChar();updateProg();schedRender()};
+    db.onclick=()=>{store.del(ch,i);persistProfile();refreshChar();updateProg();schedRender()};
     w.appendChild(db);row.appendChild(w);
   });
   updateProg();
@@ -3439,6 +3497,80 @@ async function exportPNG(){
 }
 
 // ═══════════════════════════════════════════════════════════
+// ── PER-PAGE TRANSPARENT PNG EXPORT ──────────────────────
+async function exportPagePNG(pgIdx){
+  if(!pagesData[pgIdx]) return;
+  const sc=2;
+  const oc=new OffscreenCanvas(PAGE_W*sc,PAGE_H*sc);
+  const ctx=oc.getContext('2d');
+  ctx.drawImage(pagesData[pgIdx].inkCv,0,0,PAGE_W*sc,PAGE_H*sc);
+  const blob=await oc.convertToBlob({type:'image/png',quality:1});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='magicwrite_ink_p'+(pgIdx+1)+'_'+Date.now()+'.png';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+  showToast('Transparentes PNG exportiert ✓');
+}
+
+// ── PER-PAGE GOODNOTES PDF (transparent background) ──────
+async function exportPageGoodNotesPDF(pgIdx){
+  if(!window.PDFLib) await loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js');
+  showToast('Erstelle GN PDF für Seite '+(pgIdx+1)+'…');
+  syncCfg();
+  const text=document.getElementById('txt').value;
+  if(!text){showToast('Kein Text.');return;}
+  const plan=engine.computeStrokePlan(text).filter(s=>s.page===pgIdx);
+  if(!plan.length){showToast('Keine Zeichen auf Seite '+(pgIdx+1)+'.');return;}
+  const {PDFDocument,PDFName,PDFRawStream}=window.PDFLib;
+  const pdfDoc=await PDFDocument.create();
+  const fmtObj=PAGE_FORMATS.find(f=>f.key===currentPageFormat)||PAGE_FORMATS[0];
+  const fmtPt=getFmtPt(fmtObj,currentOrientation);
+  const PT_W=fmtPt.w, PT_H=fmtPt.h;
+  const SX=PT_W/PAGE_W, SY=PT_H/PAGE_H;
+  const page=pdfDoc.addPage([PT_W,PT_H]);
+  // No background — fully transparent page
+  const hex=engine.cfg.inkColor.replace('#','');
+  const inkR=parseInt(hex.slice(0,2),16)/255;
+  const inkG=parseInt(hex.slice(2,4),16)/255;
+  const inkB=parseInt(hex.slice(4,6),16)/255;
+  const f=v=>v.toFixed(4);
+  let annotsArr=page.node.get(PDFName.of('Annots'));
+  if(!annotsArr){annotsArr=pdfDoc.context.obj([]);page.node.set(PDFName.of('Annots'),annotsArr);}
+  function buildPathCmds(pts){
+    if(pts.length<2) return `${f(pts[0].x)} ${f(pts[0].y)} m\n${f(pts[0].x)} ${f(pts[0].y)} l`;
+    const out=[`${f(pts[0].x)} ${f(pts[0].y)} m`];let cur=pts[0];
+    for(let i=1;i<pts.length-1;i++){
+      const cp=pts[i];const mid={x:(pts[i].x+pts[i+1].x)/2,y:(pts[i].y+pts[i+1].y)/2};
+      const c1x=cur.x+2/3*(cp.x-cur.x),c1y=cur.y+2/3*(cp.y-cur.y);
+      const c2x=mid.x+2/3*(cp.x-mid.x),c2y=mid.y+2/3*(cp.y-mid.y);
+      out.push(`${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(mid.x)} ${f(mid.y)} c`);cur=mid;
+    }
+    out.push(`${f(pts[pts.length-1].x)} ${f(pts[pts.length-1].y)} l`);return out.join('\n');
+  }
+  for(const stroke of plan){
+    if(stroke.pts.length<2) continue;
+    const pdfPts=stroke.pts.map(p=>({x:p.x*SX,y:PT_H-p.y*SY}));
+    const xs=pdfPts.map(p=>p.x),ys=pdfPts.map(p=>p.y);
+    const pad=stroke.lw+2;
+    const rx1=Math.min(...xs)-pad,ry1=Math.min(...ys)-pad;
+    const rx2=Math.max(...xs)+pad,ry2=Math.max(...ys)+pad;
+    const flatPts=pdfPts.flatMap(p=>[p.x,p.y]);
+    const apContent=['q',`${f(inkR)} ${f(inkG)} ${f(inkB)} RG`,`${f(stroke.lw)} w`,'1 J','1 j',buildPathCmds(pdfPts),'S','Q'].join('\n');
+    const apBytes=new TextEncoder().encode(apContent);
+    const apDict=pdfDoc.context.obj({Type:PDFName.of('XObject'),Subtype:PDFName.of('Form'),FormType:1,BBox:[rx1,ry1,rx2,ry2],Resources:pdfDoc.context.obj({})});
+    apDict.set(PDFName.of('Length'),pdfDoc.context.obj(apBytes.length));
+    const apRef=pdfDoc.context.register(PDFRawStream.of(apDict,apBytes));
+    const bsDict=pdfDoc.context.obj({W:stroke.lw,S:PDFName.of('S')});
+    const annot=pdfDoc.context.obj({Type:PDFName.of('Annot'),Subtype:PDFName.of('Ink'),Rect:[rx1,ry1,rx2,ry2],InkList:[flatPts],BS:bsDict,C:[inkR,inkG,inkB],CA:1,F:4,P:page.ref,AP:pdfDoc.context.obj({N:apRef})});
+    annotsArr.push(pdfDoc.context.register(annot));
+  }
+  const pdfBytes=await pdfDoc.save();
+  const blob=new Blob([pdfBytes],{type:'application/pdf'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='magicwrite_gn_p'+(pgIdx+1)+'_'+Date.now()+'.pdf';a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+  showToast('✓ GN PDF Seite '+(pgIdx+1)+' exportiert – In GoodNotes: + → Importieren → Datei');
+}
+
 // EXPORT – PDF
 // ═══════════════════════════════════════════════════════════
 async function exportPDF(){
@@ -3508,16 +3640,22 @@ async function exportGoodNotesInk(){
     const pgB=parseInt(pgHex.slice(4,6),16)/255;
     page.drawRectangle({x:0,y:0,width:PT_W,height:PT_H,color:rgb(pgR,pgG,pgB)});
     if(currentLin!=='blank'){
-      const sp=48*SY, lc=rgb(0.58,0.64,0.81);
+      // Match the pt-based spacing used in drawLin for accuracy
+      const spPx=currentLin==='gn-lined'?ptToPx(17):currentLin==='gn-notepad'?ptToPx(14):ptToPx(36);
+      const sp=spPx*SY, lc=rgb(0.58,0.64,0.81);
+      const lineOp=currentLin==='gn-lined'||currentLin==='gn-notepad'?0.42:0.35;
       for(let y=sp;y<PT_H;y+=sp)
-        page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:0.35});
+        page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:lineOp});
       if(currentLin==='grid'){
-        const spx=40*SX;
+        const spx=ptToPx(30)*SX;
         for(let x=spx;x<PT_W;x+=spx)
           page.drawLine({start:{x,y:0},end:{x,y:PT_H},thickness:0.5,color:lc,opacity:0.35});
       }
-      const mx=62*SX;
-      page.drawLine({start:{x:mx,y:0},end:{x:mx,y:PT_H},thickness:0.8,color:rgb(0.82,0.37,0.33),opacity:0.26});
+      // Red margin line for all ruled/gn types
+      if(currentLin!=='dot'){
+        const mx=ptToPx(46)*SX;
+        page.drawLine({start:{x:mx,y:0},end:{x:mx,y:PT_H},thickness:0.8,color:rgb(0.82,0.37,0.33),opacity:0.26});
+      }
     }
     pdfPages.push(page);
   }
@@ -4801,6 +4939,25 @@ async function resetAccount(){
   loadSettings();
   renderCustomColors();
   requestAnimationFrame(fitPageToView);
+
+  // ── PINCH-TO-ZOOM (touch) ─────────────────────────────
+  (function(){
+    let initDist=0,initZoom=1;
+    function dist(ts){const dx=ts[0].clientX-ts[1].clientX,dy=ts[0].clientY-ts[1].clientY;return Math.sqrt(dx*dx+dy*dy);}
+    const el=document.getElementById('doc-scroll');
+    el.addEventListener('touchstart',e=>{
+      if(e.touches.length===2){e.preventDefault();initDist=dist(e.touches);initZoom=currentZoom;}
+    },{passive:false});
+    el.addEventListener('touchmove',e=>{
+      if(e.touches.length===2){
+        e.preventDefault();
+        const d=dist(e.touches);
+        currentZoom=Math.round(Math.max(0.15,Math.min(4.0,initZoom*(d/initDist)))*100)/100;
+        _applyZoom();
+      }
+    },{passive:false});
+  })();
+
   loadCustomChars();
   const ci=document.getElementById('custom-input');
   if(ci) ci.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addCustomChar();}});

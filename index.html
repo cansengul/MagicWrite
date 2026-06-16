@@ -2512,8 +2512,11 @@ function getFmtPt(fmt,orientation){
 
 // portW/portH = portrait dimensions in pt
 // landW/landH = landscape dimensions in pt (optional; defaults to portH×portW)
+// suggestFs: ideal font size (px) for the format's line pitch.
+// capH = 86/150 * fontSize; suggestFs chosen so capH < sp (single-line fit).
+// gn-lined sp≈22.7px → fontSize<39.6 → 36; gn-notepad sp≈18.7px → fontSize<32.6 → 32.
 const PAGE_FORMATS=[
-  {key:'gn-std',   name:'GoodNotes Standard', portW:455, portH:588,  landW:651, landH:407, linStyle:'gn-lined'},
+  {key:'gn-std',   name:'GoodNotes Standard', portW:455, portH:588,  landW:651, landH:407, linStyle:'gn-lined',   suggestFs:36},
   {key:'a3',       name:'A3',                 portW:842, portH:1191},
   {key:'a4',       name:'A4',                 portW:595, portH:842},
   {key:'a5',       name:'A5',                 portW:420, portH:595},
@@ -2643,6 +2646,15 @@ function confirmPageFormat(){
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
+  // Apply format-suggested font size so text fits the line pitch (capH < sp → single-line)
+  if(fmt.suggestFs){
+    const fsEl=document.getElementById('fs-sl');
+    const fsVal=document.getElementById('fs-val');
+    if(fsEl){fsEl.value=fmt.suggestFs;syncPct(fsEl);}
+    if(fsVal) fsVal.textContent=fmt.suggestFs;
+  }
+  // Reset marginT to default before snapping so stale values from prior format don't shift the grid
+  engine.cfg.marginT=66;
   _snapTextToFormatGrid();
   schedRender();
   saveSettingsLocal();

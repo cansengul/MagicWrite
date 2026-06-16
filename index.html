@@ -774,6 +774,52 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   border-radius:var(--r-full);padding:2px 8px;
 }
 
+/* ── EMAIL VERIFICATION REQUIRED MODAL ── */
+#verify-required-modal{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.72);
+  z-index:6000;display:none;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+}
+#verify-required-modal.open{display:flex}
+.verify-req-card{
+  background:var(--paper-warm);border-radius:20px;
+  padding:32px 28px;width:min(92vw,390px);
+  display:flex;flex-direction:column;gap:16px;
+  box-shadow:var(--shadow-lg);animation:slideUp .24s ease;
+  text-align:center;
+}
+.verify-req-icon{
+  font-size:52px;line-height:1;
+  margin-bottom:2px;
+}
+.verify-req-title{
+  font-size:20px;font-weight:700;color:var(--ink);
+  font-family:-apple-system,'SF Pro Display',sans-serif;
+  letter-spacing:-0.3px;
+}
+.verify-req-desc{
+  font-size:13px;color:var(--ink-soft);line-height:1.7;
+}
+.verify-req-email{
+  display:inline-block;
+  font-weight:600;color:var(--ink);
+  word-break:break-all;
+}
+.verify-req-actions{
+  display:flex;flex-direction:column;gap:8px;margin-top:4px;
+}
+.verify-req-badge{
+  display:flex;align-items:center;gap:8px;
+  background:rgba(255,149,0,0.10);
+  border:0.5px solid rgba(255,149,0,0.30);
+  border-radius:var(--r);
+  padding:10px 14px;
+  font-size:12px;color:var(--warn);
+  text-align:left;
+}
+
 /* ── RE-AUTH MODAL ── */
 #reauth-modal{
   position:fixed;inset:0;
@@ -1130,6 +1176,35 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 </div><!-- /shell-body -->
 </div><!-- /shell -->
+
+<!-- EMAIL VERIFICATION REQUIRED MODAL -->
+<div id="verify-required-modal">
+  <div class="verify-req-card">
+    <div class="verify-req-icon">✉️</div>
+    <div class="verify-req-title">E-Mail-Adresse bestätigen</div>
+    <div class="verify-req-desc">
+      Um auf deine gespeicherten Zeichen und Einstellungen zugreifen zu können,
+      musst du zuerst deine E-Mail-Adresse bestätigen.
+      <br><br>
+      Wir haben eine E-Mail an <span class="verify-req-email" id="verify-req-email-addr"></span> gesendet.
+      Klicke auf den Link in der E-Mail und kehre dann hierher zurück.
+    </div>
+    <div class="verify-req-badge">
+      <i data-lucide="shield-alert" style="width:16px;height:16px;flex-shrink:0"></i>
+      <span>Ohne Bestätigung ist der Zugriff auf die Datenbank gesperrt.</span>
+    </div>
+    <div class="verify-req-actions">
+      <button class="lm-action-btn" onclick="checkVerificationAndLoad()">
+        ✓ Ich habe bestätigt – weiter
+      </button>
+      <button class="btn btn-o" onclick="resendVerificationEmailModal()" style="width:100%;padding:11px;font-size:13px;justify-content:center">
+        <i data-lucide="send" style="width:13px;height:13px"></i>
+        E-Mail erneut senden
+      </button>
+      <button class="login-skip" onclick="signOutUser()">Abmelden</button>
+    </div>
+  </div>
+</div>
 
 <!-- EXPRESS MODAL -->
 <div id="ex-modal">
@@ -1554,8 +1629,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <!-- MERGE CHOICE MODAL (shown on first login when local glyphs exist) -->
 <div id="merge-modal">
   <div class="merge-card">
-    <div class="merge-title">Zeichen übernehmen?</div>
-    <div class="merge-desc">Du hast Zeichen auf diesem Gerät aufgenommen, bevor du dich angemeldet hast. Was soll damit passieren?</div>
+    <div class="merge-title">Zeichen-Konflikt</div>
+    <div class="merge-desc" id="merge-context">Lokal und im Konto gibt es unterschiedliche Zeichen-Sets.</div>
     <div class="merge-counts">
       <div class="merge-count-box">
         <div class="merge-count-label">Lokal</div>
@@ -3406,15 +3481,26 @@ function initFirebase(){
     fbReady = true;
 
     // Auth state
-    fbAuth.onAuthStateChanged(user => {
+    fbAuth.onAuthStateChanged(async user => {
       fbUser = user;
       updateAuthUI(user);
       updateAccountSection();
       if(user){
-        loadFromFirebase();
-        subscribeToFirebase();
+        // Reload to get fresh emailVerified status
+        try{ await user.reload(); fbUser = fbAuth.currentUser; }catch(_){}
+        const isEmailUser = user.providerData.some(p => p.providerId === 'password');
+        if(isEmailUser && !fbAuth.currentUser?.emailVerified){
+          // Block DB – show verification modal
+          openVerifyRequiredModal();
+          setSyncStatus('idle');
+        } else {
+          closeVerifyRequiredModal();
+          loadFromFirebase();
+          subscribeToFirebase();
+        }
       } else {
         unsubscribeFromFirebase();
+        closeVerifyRequiredModal();
         setSyncStatus('idle');
       }
     });
@@ -3554,6 +3640,13 @@ let _pendingFirebaseData = null;
 
 async function loadFromFirebase(){
   if(!fbUser || !fbDb) return;
+  // Guard: email/password users must verify email before DB access
+  const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
+  if(_isEmailUser && !fbUser.emailVerified){
+    setSyncStatus('idle');
+    openVerifyRequiredModal();
+    return;
+  }
   setSyncStatus('syncing');
   const timeoutMs = 12000;
   try{
@@ -3586,24 +3679,34 @@ async function loadFromFirebase(){
     if(localCount === 0){
       applyFirebaseData(data, true);
       setSyncStatus('synced');
+      if(cloudCount > 0) showToast('Konto-Zeichen geladen (' + cloudCount + ' Zeichen)');
       return;
     }
 
-    // ── CASE C: Cloud has no glyphs → upload local silently
+    // ── CASE C: Cloud has no glyphs but local does
+    //    → keep local glyphs, only apply settings/prefs from cloud, then upload
     if(cloudCount === 0){
-      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
-      applyFirebaseData(dataWithoutGlyphs, true);
+      const dataProtected = Object.assign({}, data, { glyphs: null });
+      // Don't wipe local customChars if cloud has none / empty array
+      try{
+        const cloudCC = data.customChars ? JSON.parse(data.customChars) : [];
+        if(!cloudCC.length) dataProtected.customChars = null;
+      }catch(_){ dataProtected.customChars = null; }
+      applyFirebaseData(dataProtected, true);
+      // Upload ALL local data to cloud
       Object.keys(_dirty).forEach(k => _dirty[k] = true);
+      // Delay subscribe until after upload to prevent race overwrite
+      setTimeout(() => subscribeToFirebase(), 2500);
       scheduleSync();
-      setSyncStatus('synced');
-      showToast('Lokale Zeichen werden in den Account hochgeladen');
+      setSyncStatus('pending');
+      showToast('Lokale Zeichen werden hochgeladen…');
       return;
     }
 
     // ── CASE D: Same key sets → check if data is identical
     const localStr = store.toJSON();
-    const localSet = new Set(localKeys);
     const cloudSet = new Set(cloudKeys);
+
     const sameKeys = localKeys.length === cloudKeys.length
                      && localKeys.every(k => cloudSet.has(k));
 
@@ -3616,12 +3719,16 @@ async function loadFromFirebase(){
     }
 
     // ── CASE E: Cloud is a strict superset (has everything local has + more)
-    //    → apply cloud silently (user gets more chars, nothing is lost)
+    //    → ask user — nothing is lost either way but they should decide
     const allLocalInCloud = localKeys.every(k => cloudSet.has(k));
     if(allLocalInCloud && cloudCount > localCount){
-      applyFirebaseData(data, true);
+      _pendingFirebaseData = data;
+      document.getElementById('merge-local-count').textContent = localCount;
+      document.getElementById('merge-cloud-count').textContent = cloudCount;
+      document.getElementById('merge-modal').classList.add('open');
+      document.getElementById('merge-context').textContent =
+        'Dein Konto enthält ' + (cloudCount - localCount) + ' zusätzliche Zeichen, die lokal fehlen.';
       setSyncStatus('synced');
-      showToast('Konto-Zeichen geladen (' + cloudCount + ' Zeichen)');
       return;
     }
 
@@ -3629,6 +3736,8 @@ async function loadFromFirebase(){
     _pendingFirebaseData = data;
     document.getElementById('merge-local-count').textContent = localCount;
     document.getElementById('merge-cloud-count').textContent = cloudCount;
+    document.getElementById('merge-context').textContent =
+      'Lokal und im Konto gibt es unterschiedliche Zeichen-Sets.';
     document.getElementById('merge-modal').classList.add('open');
     setSyncStatus('synced');
   }catch(err){
@@ -3691,11 +3800,33 @@ function mergeCombine(){
 // ── FIREBASE SUBSCRIBE (real-time, cross-device) ───────────
 function subscribeToFirebase(){
   if(!fbUser || !fbDb) return;
+  // Guard: email users must be verified
+  const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
+  if(_isEmailUser && !fbUser.emailVerified) return;
+
   unsubscribeFromFirebase();
   fbListener = (snap) => {
     const data = snap.val();
     if(!data) return;
     if(data._session === SESSION_ID) return; // our own write, ignore
+
+    // ── Protect local glyphs: never overwrite with fewer/empty cloud glyphs ──
+    const localCount = Object.keys(store.g || {}).length;
+    if(localCount > 0 && data.glyphs !== undefined){
+      let cloudCount = 0;
+      try{
+        const cloudObj = JSON.parse(data.glyphs || '{}');
+        cloudCount = Object.keys(cloudObj).length;
+      }catch(_){}
+      if(cloudCount < localCount){
+        // Cloud has fewer glyphs than local — skip glyph portion, apply rest
+        const dataProtected = Object.assign({}, data, { glyphs: null });
+        applyFirebaseData(dataProtected, false);
+        setSyncStatus('synced');
+        return;
+      }
+    }
+
     applyFirebaseData(data, false);
     setSyncStatus('synced');
     showToast('↻ Von anderem Gerät synchronisiert');
@@ -3801,6 +3932,9 @@ window.addEventListener('beforeunload', () => {
 
 async function pushToFirebase(){
   if(!fbUser || !fbDb) return;
+  // Guard: email/password users must verify email before writing
+  const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
+  if(_isEmailUser && !fbUser.emailVerified) return;
   // Nothing dirty → nothing to send
   if(!Object.values(_dirty).some(Boolean)) return;
 
@@ -4006,14 +4140,63 @@ async function checkVerificationStatus(){
   if(!fbUser) return;
   try{
     await fbUser.reload();
-    if(fbUser.emailVerified){
+    fbUser = fbAuth.currentUser;
+    if(fbUser?.emailVerified){
       closeLoginModal();
+      closeVerifyRequiredModal();
       showToast('E-Mail bestätigt ✓ Willkommen!');
+      // Now allowed to access DB
+      loadFromFirebase();
+      subscribeToFirebase();
     } else {
       showToast('E-Mail noch nicht bestätigt – bitte Link in der E-Mail anklicken');
     }
   }catch(err){
     showToast('Fehler beim Prüfen: ' + (err.message || err.code));
+  }
+}
+
+// ── VERIFY REQUIRED MODAL ──────────────────────────────────
+function openVerifyRequiredModal(){
+  const modal = document.getElementById('verify-required-modal');
+  if(!modal) return;
+  const emailEl = document.getElementById('verify-req-email-addr');
+  if(emailEl && fbUser) emailEl.textContent = fbUser.email || '';
+  modal.classList.add('open');
+  if(window.lucide) lucide.createIcons();
+}
+function closeVerifyRequiredModal(){
+  const modal = document.getElementById('verify-required-modal');
+  if(modal) modal.classList.remove('open');
+}
+async function checkVerificationAndLoad(){
+  if(!fbUser) return;
+  try{
+    await fbUser.reload();
+    fbUser = fbAuth.currentUser;
+    if(fbUser?.emailVerified){
+      closeVerifyRequiredModal();
+      showToast('E-Mail bestätigt ✓ Daten werden geladen…');
+      updateAccountSection();
+      loadFromFirebase();
+      subscribeToFirebase();
+    } else {
+      showToast('E-Mail noch nicht bestätigt – bitte Link im Posteingang anklicken');
+    }
+  }catch(err){
+    showToast('Fehler beim Prüfen: ' + (err.message || err.code));
+  }
+}
+async function resendVerificationEmailModal(){
+  if(!fbUser) return;
+  try{
+    await fbUser.sendEmailVerification();
+    showToast('Bestätigungs-E-Mail erneut gesendet ✓');
+  }catch(err){
+    const msg = err.code === 'auth/too-many-requests'
+      ? 'Zu viele Versuche – bitte warte einen Moment'
+      : 'Fehler beim Senden: ' + (err.message || err.code);
+    showToast(msg);
   }
 }
 

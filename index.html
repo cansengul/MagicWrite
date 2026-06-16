@@ -781,6 +781,52 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 .reauth-desc{font-size:13px;color:var(--ink-soft);line-height:1.6}
 
 /* ═══════════════════════════════════════
+   MERGE CHOICE MODAL
+═══════════════════════════════════════ */
+#merge-modal{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.50);
+  z-index:4000;display:none;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+#merge-modal.open{display:flex}
+.merge-card{
+  background:var(--paper-warm);border-radius:var(--r-lg);
+  padding:26px 24px;width:min(92vw,400px);
+  display:flex;flex-direction:column;gap:14px;
+  box-shadow:var(--shadow-lg);animation:slideUp .22s ease;
+}
+.merge-title{
+  font-size:16px;font-weight:700;color:var(--ink);
+  font-family:-apple-system,'SF Pro Display',sans-serif;
+}
+.merge-desc{font-size:13px;color:var(--ink-soft);line-height:1.6}
+.merge-counts{
+  display:flex;gap:8px;
+}
+.merge-count-box{
+  flex:1;background:var(--paper);border:1.5px solid var(--border);
+  border-radius:var(--r-md);padding:10px 12px;
+  display:flex;flex-direction:column;gap:2px;
+}
+.merge-count-label{font-size:11px;color:var(--ink-soft);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.merge-count-num{font-size:22px;font-weight:700;color:var(--ink)}
+.merge-count-sub{font-size:11px;color:var(--ink-soft)}
+.merge-btns{display:flex;flex-direction:column;gap:8px;margin-top:2px}
+.merge-btn{
+  width:100%;padding:11px 14px;border-radius:var(--r-md);
+  font-size:13px;font-weight:600;cursor:pointer;
+  border:1.5px solid var(--border);background:var(--paper);
+  color:var(--ink);display:flex;flex-direction:column;gap:2px;
+  text-align:left;transition:border-color .15s,background .15s;
+}
+.merge-btn:hover{border-color:var(--accent);background:var(--paper-warm)}
+.merge-btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.merge-btn.primary:hover{opacity:.9}
+.merge-btn-sub{font-size:11px;font-weight:400;opacity:.8}
+
+/* ═══════════════════════════════════════
    IMPORT PREVIEW MODAL
    ═══════════════════════════════════════ */
 #import-modal{
@@ -1444,6 +1490,36 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <button class="lm-back" style="align-self:center;margin-top:2px" onclick="loginScreen('pick');fbAuth.signOut()">← Andere Methode wählen</button>
     </div>
 
+  </div>
+</div>
+
+<!-- MERGE CHOICE MODAL (shown on first login when local glyphs exist) -->
+<div id="merge-modal">
+  <div class="merge-card">
+    <div class="merge-title">Zeichen übernehmen?</div>
+    <div class="merge-desc">Du hast Zeichen auf diesem Gerät aufgenommen, bevor du dich angemeldet hast. Was soll damit passieren?</div>
+    <div class="merge-counts">
+      <div class="merge-count-box">
+        <div class="merge-count-label">Lokal</div>
+        <div class="merge-count-num" id="merge-local-count">0</div>
+        <div class="merge-count-sub">Zeichen auf diesem Gerät</div>
+      </div>
+      <div class="merge-count-box">
+        <div class="merge-count-label">Konto</div>
+        <div class="merge-count-num" id="merge-cloud-count">0</div>
+        <div class="merge-count-sub">Zeichen im Account</div>
+      </div>
+    </div>
+    <div class="merge-btns">
+      <button class="merge-btn primary" onclick="mergeKeepLocal()">
+        Lokale Zeichen behalten &amp; hochladen
+        <span class="merge-btn-sub">Deine Zeichen von diesem Gerät werden in den Account übernommen.</span>
+      </button>
+      <button class="merge-btn" onclick="mergeUseCloud()">
+        Konto-Zeichen laden
+        <span class="merge-btn-sub">Die lokalen Zeichen werden verworfen und durch die des Accounts ersetzt.</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -3372,6 +3448,8 @@ async function signOutUser(){
 }
 
 // ── FIREBASE LOAD ──────────────────────────────────────────
+let _pendingFirebaseData = null;
+
 async function loadFromFirebase(){
   if(!fbUser || !fbDb) return;
   setSyncStatus('syncing');
@@ -3383,12 +3461,51 @@ async function loadFromFirebase(){
     ]);
     const data = snap.val();
     if(!data){ setSyncStatus('synced'); return; }
-    applyFirebaseData(data, true /* initial load, merge local */);
+
+    // If local glyphs exist AND cloud has glyphs → ask user what to do
+    const localCount  = Object.keys(store.g || {}).length;
+    const cloudCount  = data.glyphs ? Object.keys(JSON.parse(data.glyphs) || {}).length : 0;
+    if(localCount > 0 && cloudCount > 0){
+      _pendingFirebaseData = data;
+      document.getElementById('merge-local-count').textContent = localCount;
+      document.getElementById('merge-cloud-count').textContent = cloudCount;
+      document.getElementById('merge-modal').classList.add('open');
+      setSyncStatus('synced');
+      return;
+    }
+
+    applyFirebaseData(data, true /* initial load */);
     setSyncStatus('synced');
   }catch(err){
     setSyncStatus(err.message === 'timeout' ? 'offline' : 'error');
     console.error('Firebase Ladefehler:', err);
   }
+}
+
+function mergeKeepLocal(){
+  // Keep local glyphs, apply only settings/prefs/customChars from cloud
+  document.getElementById('merge-modal').classList.remove('open');
+  if(_pendingFirebaseData){
+    const d = _pendingFirebaseData;
+    _pendingFirebaseData = null;
+    // Apply everything except glyphs
+    const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
+    applyFirebaseData(dataWithoutGlyphs, true);
+  }
+  // Push local glyphs up to the account
+  scheduleSync();
+  showToast('Lokale Zeichen werden in den Account hochgeladen');
+}
+
+function mergeUseCloud(){
+  // Discard local, apply everything from cloud
+  document.getElementById('merge-modal').classList.remove('open');
+  if(_pendingFirebaseData){
+    const d = _pendingFirebaseData;
+    _pendingFirebaseData = null;
+    applyFirebaseData(d, true);
+  }
+  showToast('Konto-Zeichen wurden geladen');
 }
 
 // ── FIREBASE SUBSCRIBE (real-time, cross-device) ───────────

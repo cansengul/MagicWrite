@@ -3755,6 +3755,7 @@ function mergeKeepLocal(){
     const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
     applyFirebaseData(dataWithoutGlyphs, true);
   }
+  buildCustomGrid(); // always refresh custom-char grid after merge
   _dirty.glyphs = true;
   scheduleSync();
   showToast('Lokale Zeichen werden hochgeladen');
@@ -3768,6 +3769,7 @@ function mergeUseCloud(){
     _pendingFirebaseData = null;
     applyFirebaseData(d, true);
   }
+  buildCustomGrid(); // always refresh custom-char grid after merge
   showToast('Konto-Zeichen wurden geladen');
 }
 
@@ -3777,7 +3779,7 @@ function mergeCombine(){
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    // Apply non-glyph data first
+    // Apply non-glyph data first (settings, prefs, customChars)
     const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
     applyFirebaseData(dataWithoutGlyphs, true);
     if(d.glyphs){
@@ -3791,6 +3793,7 @@ function mergeCombine(){
       }catch(e){ console.warn('Merge-Fehler:', e); }
     }
   }
+  buildCustomGrid(); // always refresh custom-char grid after merge
   _dirty.glyphs = true;
   scheduleSync();
   showToast('Zeichen wurden zusammengeführt');
@@ -4247,11 +4250,12 @@ async function reauthAndDelete(){
   try{
     const credential = firebase.auth.EmailAuthProvider.credential(fbUser.email, pw);
     await fbUser.reauthenticateWithCredential(credential);
-    // Re-auth succeeded → delete
     closeReauthModal();
-    await fbDb.ref(`users/${fbUser.uid}`).remove();
+    // Only remove DB data if verified (unverified users have no DB data)
+    if(fbUser.emailVerified && fbDb) await fbDb.ref(`users/${fbUser.uid}`).remove();
     await fbUser.delete();
     closeSettings();
+    closeVerifyRequiredModal();
     showToast('Konto wurde gelöscht');
   }catch(err){
     const errEl = document.getElementById('reauth-err');
@@ -4269,29 +4273,29 @@ async function deleteAccount(){
   if(!fbUser) return;
   if(!confirm('Konto wirklich löschen?\n\nAlle Cloud-Daten werden unwiderruflich entfernt. Lokale Daten bleiben erhalten.')) return;
 
-  // Try direct delete first — works if the session is fresh.
-  // Only fall back to re-auth if Firebase explicitly requires it.
   const providerIds = fbUser.providerData.map(p => p.providerId);
   const isEmailUser = providerIds.includes('password');
+  // Unverified users have no DB data (rules block writes) — skip the DB remove
+  const hasDbData = fbUser.emailVerified;
 
   try{
-    await fbDb.ref(`users/${fbUser.uid}`).remove();
+    if(hasDbData && fbDb) await fbDb.ref(`users/${fbUser.uid}`).remove();
     await fbUser.delete();
     closeSettings();
+    closeVerifyRequiredModal();
     showToast('Konto wurde gelöscht');
   }catch(err){
     if(err.code === 'auth/requires-recent-login'){
       if(isEmailUser){
-        // Session too old for email user → ask for password once
         openReauthModal();
       } else {
-        // Session too old for Google user → silent popup reauth
         try{
           const provider = new firebase.auth.GoogleAuthProvider();
           await fbUser.reauthenticateWithPopup(provider);
-          await fbDb.ref(`users/${fbUser.uid}`).remove();
+          if(hasDbData && fbDb) await fbDb.ref(`users/${fbUser.uid}`).remove();
           await fbUser.delete();
           closeSettings();
+          closeVerifyRequiredModal();
           showToast('Konto wurde gelöscht');
         }catch(reauthErr){
           if(reauthErr.code !== 'auth/popup-closed-by-user'){

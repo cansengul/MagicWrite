@@ -1393,7 +1393,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <div class="srow">
         <label>Zeilenabstand <span id="lh-val">1.6</span>×</label>
         <div class="srow-track">
-          <input type="range" id="lh-sl" min="1.0" max="3.0" step=".1" value="1.6" oninput="document.getElementById('lh-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
+          <input type="range" id="lh-sl" min="1.0" max="3.0" step=".1" value="1.6" oninput="_snapLineHpx=0;document.getElementById('lh-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
           <button class="slider-rst" onclick="resetSlider('lh-sl')" title="Zurücksetzen">↺</button>
         </div>
       </div>
@@ -2040,7 +2040,8 @@ const N = {
   W:100, H:150, BL:108,
   CAP:22, XH:68, DESC:132,
 
-  normalize(strokes){
+  // ch: the character being recorded (optional). Used for descender-aware normalization.
+  normalize(strokes, ch){
     const all=strokes.flat();
     if(!all.length) return strokes;
     let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
@@ -2057,8 +2058,21 @@ const N = {
       ]);
     }
     const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
-    const sw=(rw||1)*sc, sh=(rh||1)*sc;
+    const sw=(rw||1)*sc;
     const ox=(this.W-sw)/2;
+    // Descender letters (g,j,p,q,y): use proportional y-mapping from the recording canvas
+    // (canvas attribute height = 380 → N.H = 150), so strokes drawn below the BL guide
+    // land below N.BL and strokes at the DESC guide land at N.DESC in normalised space.
+    if(ch && 'gjpqy'.includes(ch)){
+      const sy=this.H/380; // 150/380 — direct canvas→N.H proportion
+      return strokes.map(s=>s.map(p=>({
+        x:(p.x-x0)*sc+ox,
+        y:p.y*sy,
+        p:p.p??0.5
+      })));
+    }
+    // Standard bounding-box normalization: bottom of drawing mapped to N.BL
+    const sh=(rh||1)*sc;
     const oy=this.BL-sh;
     return strokes.map(s=>s.map(p=>({
       x:(p.x-x0)*sc+ox,
@@ -2114,7 +2128,7 @@ function drawGuides(ctx, w, h){
 class GlyphStore {
   constructor(){this.g={}}
   add(ch,strokes){
-    const n=N.normalize(strokes);
+    const n=N.normalize(strokes,ch);
     if(!this.g[ch]) this.g[ch]=[];
     this.g[ch].push({strokes:n,aw:N.advance(n)});
   }
@@ -2512,11 +2526,8 @@ function getFmtPt(fmt,orientation){
 
 // portW/portH = portrait dimensions in pt
 // landW/landH = landscape dimensions in pt (optional; defaults to portH×portW)
-// suggestFs: ideal font size (px) for the format's line pitch.
-// capH = 86/150 * fontSize; suggestFs chosen so capH < sp (single-line fit).
-// gn-lined sp≈22.7px → fontSize<39.6 → 36; gn-notepad sp≈18.7px → fontSize<32.6 → 32.
 const PAGE_FORMATS=[
-  {key:'gn-std',   name:'GoodNotes Standard', portW:455, portH:588,  landW:651, landH:407, linStyle:'gn-lined',   suggestFs:36},
+  {key:'gn-std',   name:'GoodNotes Standard', portW:455, portH:588,  landW:651, landH:407, linStyle:'gn-lined'},
   {key:'a3',       name:'A3',                 portW:842, portH:1191},
   {key:'a4',       name:'A4',                 portW:595, portH:842},
   {key:'a5',       name:'A5',                 portW:420, portH:595},
@@ -2598,6 +2609,11 @@ function selectFmtKey(key){
 }
 
 // Snap text baseline and line height to the current format's rule grid
+// Stores the exact snapped line height in pixels (integer multiple of sp).
+// syncCfg() uses this directly so there is no floating-point drift across lines.
+// Cleared to 0 when the user manually moves the lh-sl slider.
+let _snapLineHpx=0;
+
 function _snapTextToFormatGrid(){
   const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
   const capH=(N.BL-N.CAP)/N.H*fontSize;
@@ -2607,25 +2623,26 @@ function _snapTextToFormatGrid(){
   else if(currentLin==='ruled'||currentLin==='grid') sp=Math.round(ptToPx(36));
   else if(currentLin==='dot') sp=Math.round(ptToPx(30));
   if(!sp) return; // blank — nothing to snap to
-  // Smallest m such that m×sp ≥ capH (ceil ensures newLH ≥ 1.0, avoiding slider clamp)
+  // Smallest m such that m×sp ≥ capH (ceil ensures lineH ≥ capH → lh ≥ 1.0)
   const m=Math.max(1,Math.ceil(capH/sp))||1;
-  const lineH=m*sp;
-  const newLH=parseFloat((lineH/capH).toFixed(2));
+  const lineH=m*sp; // exact integer px
+  _snapLineHpx=lineH; // store exact px so syncCfg() avoids toFixed drift
+  engine.cfg.lineHeight=lineH/capH; // set precise ratio (not rounded)
   const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));
   const newMT=Math.max(4,k*sp-capH);
   engine.cfg.marginT=newMT;
-  engine.cfg.lineHeight=newLH;
   // Only push left margin past the red stripe for formats that actually draw it
   if(currentLin==='gn-lined'||currentLin==='gn-notepad'||currentLin==='ruled'){
     engine.cfg.marginL=ptToPx(46)+12;
   } else {
     engine.cfg.marginL=72; // default left margin — no stripe
   }
-  // Reflect snapped lineHeight on slider
+  // Reflect snapped lineHeight on slider (display only — syncCfg uses _snapLineHpx for precision)
+  const displayLH=parseFloat((lineH/capH).toFixed(2));
   const lhEl=document.getElementById('lh-sl');
   const lhVal=document.getElementById('lh-val');
-  if(lhEl){lhEl.value=newLH;syncPct(lhEl);}
-  if(lhVal) lhVal.textContent=newLH.toFixed(1);
+  if(lhEl){lhEl.value=displayLH;syncPct(lhEl);}
+  if(lhVal) lhVal.textContent=displayLH.toFixed(1);
 }
 
 function confirmPageFormat(){
@@ -2646,14 +2663,7 @@ function confirmPageFormat(){
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
-  // Apply format-suggested font size so text fits the line pitch (capH < sp → single-line)
-  if(fmt.suggestFs){
-    const fsEl=document.getElementById('fs-sl');
-    const fsVal=document.getElementById('fs-val');
-    if(fsEl){fsEl.value=fmt.suggestFs;syncPct(fsEl);}
-    if(fsVal) fsVal.textContent=fmt.suggestFs;
-  }
-  // Reset marginT to default before snapping so stale values from prior format don't shift the grid
+  // Reset marginT to a clean default before snapping — avoids stale value from previous format
   engine.cfg.marginT=66;
   _snapTextToFormatGrid();
   schedRender();
@@ -3197,7 +3207,12 @@ function prevChar(){
 // ═══════════════════════════════════════════════════════════
 function syncCfg(){
   engine.cfg.fontSize    =parseInt(document.getElementById('fs-sl').value);
-  engine.cfg.lineHeight  =parseFloat(document.getElementById('lh-sl').value);
+  if(_snapLineHpx>0){
+    const capH=(N.BL-N.CAP)/N.H*engine.cfg.fontSize;
+    engine.cfg.lineHeight=_snapLineHpx/capH;
+  } else {
+    engine.cfg.lineHeight=parseFloat(document.getElementById('lh-sl').value);
+  }
   engine.cfg.letterSpacing=parseFloat(document.getElementById('ls-sl').value);
   engine.cfg.wordSpacing =parseFloat(document.getElementById('ws-sl').value);
   engine.cfg.jitter      =parseFloat(document.getElementById('jit-sl').value);

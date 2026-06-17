@@ -2908,12 +2908,26 @@ function setLin(t){
   currentLin=t;
   _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  // Only adjust the left margin for the red stripe — do NOT re-snap lineHeight or
-  // auto-reduce fontSize. Re-snapping when the user just switches paper style (e.g.
-  // from gn-lined to ruled/grid) recomputes lineHeight from a different grid spacing
-  // and triggers an unwanted font-size auto-reduce, which resets the line spacing the
-  // user already has (e.g. from GoodNotes Standard). The full snap (_snapTextToFormatGrid)
-  // is intentionally reserved for format changes (confirmPageFormat).
+  // Preserve line spacing when the user just changes paper style.
+  // If a grid-snap was active (_snapLineHpx > 0), bake the current computed
+  // line height into the slider and release the snap lock. This ensures syncCfg()
+  // keeps exactly the same line height for the new style without re-running
+  // _snapTextToFormatGrid() (which would recalculate from the new grid spacing,
+  // auto-reduce the font size, and change the visible line spacing).
+  if(_snapLineHpx>0){
+    const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
+    const capH=(N.BL-N.CAP)/N.H*fontSize;
+    const bakedLH=_snapLineHpx/capH;
+    if(bakedLH>=1.0){
+      const lhEl=document.getElementById('lh-sl');
+      const lhVal=document.getElementById('lh-val');
+      if(lhEl){lhEl.value=bakedLH;syncPct(lhEl);}
+      if(lhVal) lhVal.textContent=bakedLH.toFixed(1);
+      engine.cfg.lineHeight=bakedLH;
+    }
+    _snapLineHpx=0; // release snap — syncCfg will now read from slider
+  }
+  // Adjust left margin for the red stripe without re-snapping anything else
   if(t==='gn-lined'||t==='gn-notepad'||t==='ruled'){
     engine.cfg.marginL=ptToPx(46)+12;
   } else {

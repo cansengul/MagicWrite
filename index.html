@@ -2595,6 +2595,7 @@ const PAGE_FORMATS=[
 
 let currentPageFormat='a4', currentOrientation='portrait';
 let _fmtPendingKey='a4', _fmtPendingOri='portrait';
+let _linOverride=false; // true once user manually picks a paper style via setLin()
 
 function openFormatPicker(){
   _fmtPendingKey=currentPageFormat;
@@ -2726,6 +2727,8 @@ function confirmPageFormat(setAsDefault=false){
     const pt=getFmtPt(fmt,_fmtPendingOri);
     PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
   }
+  // Apply format-linked line style only if the user hasn't manually chosen one
+  if(fmt.linStyle && !_linOverride) currentLin=fmt.linStyle;
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
@@ -2903,6 +2906,7 @@ function drawLin(ctx,w,h,type){
 
 function setLin(t){
   currentLin=t;
+  _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
   // Adjust left margin for red-stripe styles, but do NOT change line spacing
   engine.cfg.marginL=(t==='gn-lined'||t==='gn-notepad'||t==='ruled')?ptToPx(46)+12:72;

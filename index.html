@@ -1908,7 +1908,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <i data-lucide="x" style="width:15px;height:15px"></i>
       </button>
     </div>
-    <div class="pexp-hint">PDF wird im Hintergrund generiert (grünes Badge = bereit). Dann direkt in GoodNotes ziehen oder antippen zum Herunterladen.</div>
+    <div class="pexp-hint">Seite als transparentes PNG auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen als GN-PDF.</div>
     <div class="pexp-grid" id="pexp-grid"></div>
   </div>
 </div>
@@ -2078,11 +2078,16 @@ const N = {
       })));
     }
     // Standard bounding-box normalization: bottom of drawing mapped to N.BL
-    const sh=(rh||1)*sc;
+    // Uppercase letters: cap height at most BL–CAP so they never overflow the cap line
+    const isUpper = ch && ((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
+    const maxH = isUpper ? (this.BL-this.CAP) : (this.H*0.80);
+    const scY = Math.min(maxH/(rh||1), (this.H*0.80)/(rh||1));
+    const scFinal = Math.min(scY, (this.W*0.90)/(rw||1));
+    const sh=(rh||1)*scFinal;
     const oy=this.BL-sh;
     return strokes.map(s=>s.map(p=>({
-      x:(p.x-x0)*sc+ox,
-      y:(p.y-y0)*sc+oy,
+      x:(p.x-x0)*scFinal+ox,
+      y:(p.y-y0)*scFinal+oy,
       p:p.p??0.5
     })));
   },
@@ -2348,6 +2353,14 @@ class RenderEngine {
     const pivotY=baseY;
 
     ctx.save();
+    // Uppercase: clip at cap line so tall glyphs (e.g. scanned past the top guide) stay within the line
+    const isUpper=ch&&((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
+    if(isUpper){
+      const capLineY=baseY-(N.BL-N.CAP)*sc;
+      ctx.beginPath();
+      ctx.rect(-99999, capLineY, 199999, 299999);
+      ctx.clip();
+    }
     ctx.translate(pivotX+jit.dx, pivotY+jit.dy);
     ctx.rotate(jit.rot);
     ctx.scale(jit.sx, jit.sy);
@@ -2865,7 +2878,8 @@ function drawLin(ctx,w,h,type){
 function setLin(t){
   currentLin=t;
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  _snapTextToFormatGrid();
+  // Adjust left margin for red-stripe styles, but do NOT change line spacing
+  engine.cfg.marginL=(t==='gn-lined'||t==='gn-notepad'||t==='ruled')?ptToPx(46)+12:72;
   saveSettingsLocal();
   schedRender();
 }
@@ -3806,31 +3820,17 @@ function openPageExportModal(){
     badge.textContent='↻ PDF…';
     wrap.appendChild(badge);
 
-    // Drag: use pre-generated PDF bytes if ready, else drag transparent PNG as fallback
+    // Drag: always as full-resolution transparent PNG
     thumb.draggable=true;
     wrap._gnPdfBytes=null;
     thumb.addEventListener('dragstart',e=>{
+      const exp=document.createElement('canvas');
+      exp.width=PAGE_W*2; exp.height=PAGE_H*2;
+      exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
+      const url=exp.toDataURL('image/png');
       e.dataTransfer.effectAllowed='copy';
-      if(wrap._gnPdfBytes){
-        // Drag as real PDF file — GoodNotes imports this as a new page
-        const file=new File([wrap._gnPdfBytes],`magicwrite_gn_p${pg+1}.pdf`,{type:'application/pdf'});
-        try{
-          e.dataTransfer.items.add(file);
-        }catch(_){
-          // Fallback: blob URL via DownloadURL
-          const blobUrl=wrap._gnPdfBlobUrl||'';
-          try{e.dataTransfer.setData('DownloadURL',`application/pdf:magicwrite_gn_p${pg+1}.pdf:${blobUrl}`);}catch(__){};
-          e.dataTransfer.setData('text/uri-list',blobUrl);
-        }
-      } else {
-        // PDF not ready yet — drag transparent PNG as fallback
-        const exp=document.createElement('canvas');
-        exp.width=PAGE_W*2; exp.height=PAGE_H*2;
-        exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
-        const url=exp.toDataURL('image/png');
-        try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
-        e.dataTransfer.setData('text/uri-list',url);
-      }
+      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+      e.dataTransfer.setData('text/uri-list',url);
     });
 
     // Click → download GN PDF (or PNG as fallback)

@@ -2908,8 +2908,17 @@ function setLin(t){
   currentLin=t;
   _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  // Snap text line height and margins to the new grid
-  _snapTextToFormatGrid();
+  // Only adjust the left margin for the red stripe — do NOT re-snap lineHeight or
+  // auto-reduce fontSize. Re-snapping when the user just switches paper style (e.g.
+  // from gn-lined to ruled/grid) recomputes lineHeight from a different grid spacing
+  // and triggers an unwanted font-size auto-reduce, which resets the line spacing the
+  // user already has (e.g. from GoodNotes Standard). The full snap (_snapTextToFormatGrid)
+  // is intentionally reserved for format changes (confirmPageFormat).
+  if(t==='gn-lined'||t==='gn-notepad'||t==='ruled'){
+    engine.cfg.marginL=ptToPx(46)+12;
+  } else {
+    engine.cfg.marginL=72;
+  }
   saveSettingsLocal();
   schedRender();
 }

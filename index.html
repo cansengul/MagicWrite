@@ -3888,31 +3888,40 @@ function openPageExportModal(){
     wrap.className='pexp-thumb';
     wrap.style.cssText='position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab';
 
-    // Thumbnail canvas (ink only – transparent bg over checkerboard)
-    const thumb=document.createElement('canvas');
-    thumb.width=tw; thumb.height=th;
-    thumb.style.cssText='border-radius:4px;background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0 0/12px 12px;display:block';
-    const tctx=thumb.getContext('2d');
-    tctx.drawImage(p.inkCv,0,0,tw,th);
+    const fname=`magicwrite_p${pg+1}.png`;
+    let dragBlob=null; // pre-computed PNG blob — ready before the user drags
 
-    // Drag: full-resolution transparent PNG
+    // High-res transparent PNG (ink only, 2× for readability in GoodNotes)
+    const exp=document.createElement('canvas');
+    exp.width=PAGE_W*2; exp.height=PAGE_H*2;
+    exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
+
+    // Use <img> not <canvas>: iPadOS Safari provides <img> src to drop targets natively.
+    // The img is displayed at thumbnail size (tw×th) but its src is the full-res PNG.
+    const thumb=document.createElement('img');
+    thumb.width=tw; thumb.height=th;
+    thumb.style.cssText='border-radius:4px;display:block;cursor:grab';
     thumb.draggable=true;
     thumb.title=`Seite ${pg+1} – ziehen oder antippen zum PNG-Download`;
+    thumb.alt=`Seite ${pg+1}`;
+
+    // Pre-compute PNG blob async so raw bytes are ready before the drag starts
+    exp.toBlob(blob=>{
+      if(!blob) return;
+      dragBlob=blob;
+      thumb.src=URL.createObjectURL(blob); // efficient blob-URL for display
+    },'image/png');
+
     thumb.addEventListener('dragstart',e=>{
-      const sc=2;
-      const exp=document.createElement('canvas');
-      exp.width=PAGE_W*sc; exp.height=PAGE_H*sc;
-      const ectx=exp.getContext('2d');
-      // Composite background (ruling lines) + ink for a complete page image
-      ectx.drawImage(p.bgCv,0,0,PAGE_W*sc,PAGE_H*sc);
-      ectx.drawImage(p.inkCv,0,0,PAGE_W*sc,PAGE_H*sc);
-      const url=exp.toDataURL('image/png');
-      const fname=`magicwrite_p${pg+1}.png`;
       e.dataTransfer.effectAllowed='copy';
-      // Provide a real File object so iPadOS/GoodNotes accepts the drop
-      try{const f=_dataURLtoFile(url,fname);if(f)e.dataTransfer.items.add(f);}catch(_){}
-      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${url}`);}catch(_){}
-      e.dataTransfer.setData('text/uri-list',url);
+      // Primary path: raw File bytes — iPadOS GoodNotes & desktop both accept this
+      if(dragBlob){
+        try{e.dataTransfer.items.add(new File([dragBlob],fname,{type:'image/png'}));}catch(_){}
+      }
+      // Desktop fallback: data URL via DownloadURL / text/uri-list
+      const durl=exp.toDataURL('image/png');
+      e.dataTransfer.setData('text/uri-list',durl);
+      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${durl}`);}catch(_){}
     });
 
     // Click → download transparent PNG

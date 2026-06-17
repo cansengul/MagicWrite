@@ -2069,22 +2069,44 @@ const N = {
         {x:this.W/2, y:this.BL-2, p:avgP}
       ]);
     }
-    const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
-    const sw=(rw||1)*sc;
-    const ox=(this.W-sw)/2;
-    // Descender letters (g,j,p,q,y): use proportional y-mapping from the recording canvas
-    // (canvas attribute height = 380 → N.H = 150), so strokes drawn below the BL guide
-    // land below N.BL and strokes at the DESC guide land at N.DESC in normalised space.
+    const sy=this.H/380; // proportional canvas→N.H factor (canvas height = 380px)
+
+    // ── Descender letters (g,j,p,q,y): proportional y-mapping, legacy x-scale ──
+    // Kept separate so existing stored descender glyphs continue to work.
     if(ch && 'gjpqy'.includes(ch)){
-      const sy=this.H/380; // 150/380 — direct canvas→N.H proportion
+      const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
+      const sw=(rw||1)*sc;
+      const ox=(this.W-sw)/2;
       return strokes.map(s=>s.map(p=>({
         x:(p.x-x0)*sc+ox,
         y:p.y*sy,
         p:p.p??0.5
       })));
     }
-    // Standard bounding-box normalization: bottom of drawing mapped to N.BL
-    // Uppercase letters: cap height at most BL–CAP so they never overflow the cap line
+
+    // ── Non-descender lowercase (a-z, äöü, except g j p q y) ──
+    // Proportional y-mapping: strokes drawn at the guide lines land at the correct
+    // normalized positions (x-height guide → N.XH=68, baseline → N.BL=108, cap → N.CAP=22).
+    // The x-coordinates are pre-scaled by the zone factor so that rendering with zs=1.0
+    // yields the correct glyph width and advance automatically.
+    const isLower = ch && ((ch>='a'&&ch<='z')||'äöü'.includes(ch));
+    if(isLower){
+      const zsx=_getLowerXScale(ch);
+      const scX=(this.W*0.90*zsx)/(rw||1);
+      const swX=(rw||1)*scX;
+      const oxX=(this.W-swX)/2;
+      return strokes.map(s=>s.map(p=>({
+        x:(p.x-x0)*scX+oxX,
+        y:p.y*sy,
+        p:p.p??0.5
+      })));
+    }
+
+    // ── Standard bounding-box normalization for uppercase, digits, symbols ──
+    // Uppercase letters: cap height capped at BL–CAP so tall glyphs stay within the line.
+    const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
+    const sw=(rw||1)*sc;
+    const ox=(this.W-sw)/2;
     const isUpper = ch && ((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
     const maxH = isUpper ? (this.BL-this.CAP) : (this.H*0.80);
     const scY = Math.min(maxH/(rh||1), (this.H*0.80)/(rh||1));
@@ -2108,15 +2130,27 @@ const N = {
 
 // ═══════════════════════════════════════════════════════════
 // ZONE SCALE
+// For lowercase letters the normalization now embeds the zone
+// scaling into the x-coordinates, so rendering uses zs=1.0.
+// Descenders (gjpqy) keep their old proportional path and zs.
 // ═══════════════════════════════════════════════════════════
 function getZoneScale(ch){
   if((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch)) return 1.0;
   if(ch>='0'&&ch<='9') return 0.92;
-  if('bdfhijklt'.includes(ch)||ch==='ß') return 0.75;
-  if('gjpqy'.includes(ch)) return 0.78;
-  if('äöü'.includes(ch)) return 0.68;
-  if(ch>='a'&&ch<='z') return 0.60;
+  if('gjpqy'.includes(ch)) return 0.78; // descenders: unchanged
+  if('bdfhiklt'.includes(ch)||ch==='ß') return 1.0; // ascenders: normalized proportionally
+  if('äöü'.includes(ch)) return 1.0;    // umlauts: normalized proportionally
+  if(ch>='a'&&ch<='z') return 1.0;      // regular lowercase: normalized proportionally
   return 0.80;
+}
+
+// x-scale factor used inside N.normalize() for non-descender lowercase letters.
+// This makes the normalized x-coordinates already carry the zone width so that
+// rendering with zs=1.0 produces the correct advance width.
+function _getLowerXScale(ch){
+  if('bdfhiklt'.includes(ch)||ch==='ß') return 0.75; // ascenders
+  if('äöü'.includes(ch)) return 0.68;
+  return 0.60; // regular x-height lowercase
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2170,8 +2204,20 @@ class GlyphStore {
   has(ch){return !!(this.g[ch]&&this.g[ch].length)}
   count(){return Object.keys(this.g).length}
   del(ch,i){if(!this.g[ch])return;this.g[ch].splice(i,1);if(!this.g[ch].length)delete this.g[ch]}
-  toJSON(){return JSON.stringify(this.g)}
-  fromJSON(s){this.g=JSON.parse(s)}
+  toJSON(){return JSON.stringify({_v:2,g:this.g})}
+  fromJSON(s){
+    const d=JSON.parse(s);
+    if(d&&typeof d==='object'&&d._v===2){
+      this.g=d.g;
+      this._needsMigration=false;
+    } else {
+      // Legacy format (v1): glyph object stored directly.
+      // Lowercase glyphs were normalised with old bounding-box method and will
+      // render too tall with the new proportional scheme — user must re-scan them.
+      this.g=d;
+      this._needsMigration=true;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3467,6 +3513,24 @@ async function openDB(){
     req.onerror=e=>rej(e.target.error);
   });
 }
+// ── MIGRATION CHECK ─────────────────────────────────────────
+// Shows a one-time notice when glyphs were stored in the old format (v1).
+// Old lowercase glyphs used bounding-box normalisation and will appear too
+// tall with the new proportional scheme — the user needs to re-scan them.
+let _migrationToastShown = false;
+function _checkMigration(){
+  if(!store._needsMigration || _migrationToastShown) return;
+  const lowerKeys = Object.keys(store.g||{}).filter(k=>{
+    const c=k.charCodeAt(0);
+    return (c>=97&&c<=122)||'äöü'.includes(k); // a-z, äöü
+  });
+  if(!lowerKeys.length) return; // no lowercase stored, no issue
+  _migrationToastShown = true;
+  setTimeout(()=>{
+    showToast('⚠️ Kleinbuchstaben bitte neu einscannen – das Format wurde verbessert.');
+  }, 800);
+}
+
 async function saveProfile(){
   await openDB();
   const tx=db.transaction('profiles','readwrite');
@@ -3481,6 +3545,7 @@ async function loadProfile(){
     const r=e.target.result;
     if(!r){return;}
     store.fromJSON(r.g);
+    _checkMigration();
     buildGrid();refreshChar();schedRender();
   };
 }
@@ -4932,6 +4997,7 @@ function applyFirebaseData(data, isInitialLoad){
   try{
     if(data.glyphs){
       store.fromJSON(data.glyphs);
+      _checkMigration();
       openDB().then(()=>{
         db.transaction('profiles','readwrite')
           .objectStore('profiles')

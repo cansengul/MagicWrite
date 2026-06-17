@@ -2698,7 +2698,15 @@ function _snapTextToFormatGrid(){
   engine.cfg.lineHeight=lineH/capH;
 
   const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));
-  engine.cfg.marginT=Math.max(4,k*sp-capH);
+  // Start text at the 2nd ruling line: shift down by one sp so the first ruling
+  // line in the writing area is always left empty.
+  engine.cfg.marginT=Math.max(4,(k+1)*sp-capH);
+
+  // Set bottom margin so the last text baseline lands on the PENULTIMATE ruling line,
+  // leaving the very last ruling line on the page empty.
+  // Formula: marginB = PAGE_H + capH - floor(PAGE_H/sp)*sp
+  const nRulingLines=Math.floor(PAGE_H/sp);
+  engine.cfg.marginB=Math.max(20, PAGE_H+capH-nRulingLines*sp);
 
   // Push left margin past the red stripe only for line styles that draw it
   if(currentLin==='gn-lined'||currentLin==='gn-notepad'||currentLin==='ruled'){
@@ -2816,8 +2824,11 @@ function ensurePages(n){
       const tmp=document.createElement('canvas');tmp.width=PAGE_W;tmp.height=PAGE_H;
       const ctx2=tmp.getContext('2d');ctx2.drawImage(inkCv,0,0);
       const url=tmp.toDataURL('image/png');
+      // Provide a real File object so iPadOS/GoodNotes accepts the drop
+      const fname=`magicwrite_p${pg+1}.png`;
+      try{const f=_dataURLtoFile(url,fname);if(f)e.dataTransfer.items.add(f);}catch(_){}
       e.dataTransfer.setData('text/uri-list',url);
-      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${url}`);}catch(_){}
     });
     const gnBtn=document.createElement('button');
     gnBtn.className='page-exp-btn';gnBtn.title='GoodNotes PDF (transparent) herunterladen';
@@ -3836,6 +3847,19 @@ async function exportPNG(){
 
 // ═══════════════════════════════════════════════════════════
 // ── PER-PAGE TRANSPARENT PNG EXPORT ──────────────────────
+// Convert a canvas data-URL to a File object synchronously (works inside dragstart).
+function _dataURLtoFile(dataurl, filename){
+  try{
+    const arr=dataurl.split(',');
+    const mime=arr[0].match(/:(.*?);/)[1];
+    const bstr=atob(arr[1]);
+    const n=bstr.length;
+    const u8=new Uint8Array(n);
+    for(let i=0;i<n;i++) u8[i]=bstr.charCodeAt(i);
+    return new File([u8],filename,{type:mime});
+  }catch(e){return null;}
+}
+
 async function exportPagePNG(pgIdx){
   if(!pagesData[pgIdx]) return;
   const sc=2;
@@ -3876,12 +3900,19 @@ function openPageExportModal(){
     thumb.draggable=true;
     thumb.title=`Seite ${pg+1} – ziehen oder antippen zum PNG-Download`;
     thumb.addEventListener('dragstart',e=>{
+      const sc=2;
       const exp=document.createElement('canvas');
-      exp.width=PAGE_W*2; exp.height=PAGE_H*2;
-      exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
+      exp.width=PAGE_W*sc; exp.height=PAGE_H*sc;
+      const ectx=exp.getContext('2d');
+      // Composite background (ruling lines) + ink for a complete page image
+      ectx.drawImage(p.bgCv,0,0,PAGE_W*sc,PAGE_H*sc);
+      ectx.drawImage(p.inkCv,0,0,PAGE_W*sc,PAGE_H*sc);
       const url=exp.toDataURL('image/png');
+      const fname=`magicwrite_p${pg+1}.png`;
       e.dataTransfer.effectAllowed='copy';
-      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+      // Provide a real File object so iPadOS/GoodNotes accepts the drop
+      try{const f=_dataURLtoFile(url,fname);if(f)e.dataTransfer.items.add(f);}catch(_){}
+      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${url}`);}catch(_){}
       e.dataTransfer.setData('text/uri-list',url);
     });
 

@@ -1178,7 +1178,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes (keine Bearbeitung)
         </button>
         <button class="exp-item" onclick="openPageExportModal()">
-          <i data-lucide="layers" style="width:13px;height:13px"></i>Seiten-Export · PNG (GoodNotes)
+          <i data-lucide="layers" style="width:13px;height:13px"></i>Drag &amp; Drop – Seiten
         </button>
       </div>
     </div>
@@ -1214,6 +1214,9 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <div class="rec-wrap">
       <canvas id="rec-cv" width="500" height="380"></canvas>
       <div class="rec-hint" id="rec-hint">Hier zeichnen</div>
+    </div>
+    <div id="rec-oob-warn" style="display:none;background:rgba(255,149,0,0.12);border:0.5px solid rgba(255,149,0,0.45);border-radius:var(--r-sm);padding:7px 10px;font-size:11px;color:var(--warn);line-height:1.55">
+      ⚠️ Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen, da es sonst abgeschnitten werden kann.
     </div>
     <div class="guide-legend">
       <span class="guide-cap">Großbuchstaben-Oberlinie</span>
@@ -1496,6 +1499,9 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <div style="position:relative;background:var(--canvas-bg);border:2px solid var(--ui-border);border-radius:8px;overflow:hidden;box-shadow:var(--shadow);max-width:190px">
           <canvas id="ex-cv" width="500" height="380" style="display:block;width:100%;cursor:crosshair;touch-action:none"></canvas>
           <div id="ex-hint" style="position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(200,193,185,0.7);pointer-events:none;transition:opacity .2s;top:62%">Hier zeichnen…</div>
+        </div>
+        <div id="ex-oob-warn" style="display:none;background:rgba(255,149,0,0.12);border:0.5px solid rgba(255,149,0,0.45);border-radius:var(--r-sm);padding:6px 9px;font-size:10.5px;color:var(--warn);line-height:1.5;max-width:190px">
+          ⚠️ Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen. Auto-Speichern pausiert. Zum Fortfahren „Speichern + Weiter" drücken.
         </div>
 
         <div>
@@ -1903,12 +1909,12 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <div id="page-export-modal">
   <div class="pexp-card">
     <div class="pexp-head">
-      <span class="pexp-title">Seiten exportieren – PNG</span>
+      <span class="pexp-title">Drag &amp; Drop – Seiten</span>
       <button class="smodal-close" onclick="closePageExportModal()" title="Schließen">
         <i data-lucide="x" style="width:15px;height:15px"></i>
       </button>
     </div>
-    <div class="pexp-hint">Seite als transparentes PNG auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen als GN-PDF.</div>
+    <div class="pexp-hint">Seite als transparentes PNG auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen als PNG.</div>
     <div class="pexp-grid" id="pexp-grid"></div>
   </div>
 </div>
@@ -2114,6 +2120,23 @@ function getZoneScale(ch){
 }
 
 // ═══════════════════════════════════════════════════════════
+// OUT-OF-BOUNDS CHECK
+// Returns true if any point in strokes goes above the cap line
+// or below the descender line of the canvas.
+// ═══════════════════════════════════════════════════════════
+function _checkOutOfBounds(strokes, canvasH){
+  const sy=canvasH/N.H;
+  const capY=N.CAP*sy;
+  const descY=N.DESC*sy;
+  for(const stroke of strokes){
+    for(const pt of stroke){
+      if(pt.y<capY||pt.y>descY) return true;
+    }
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════
 // GUIDE LINES
 // ═══════════════════════════════════════════════════════════
 function drawGuides(ctx, w, h){
@@ -2198,6 +2221,9 @@ class Recorder {
     if(!this.dn)return;this.dn=false;
     if(this.cur&&this.cur.length>=1)this.strokes.push([...this.cur]);
     this.cur=null;
+    // Show warning if any stroke exceeds cap or descender bounds
+    const w=document.getElementById('rec-oob-warn');
+    if(w) w.style.display=_checkOutOfBounds(this.strokes,this.cv.height)?'':'none';
   }
   getData(){return JSON.parse(JSON.stringify(this.strokes))}
   clear(){
@@ -2205,6 +2231,8 @@ class Recorder {
     drawGuides(this.ctx, this.cv.width, this.cv.height);
     this.strokes=[];
     document.getElementById('rec-hint').classList.remove('gone');
+    const w=document.getElementById('rec-oob-warn');
+    if(w) w.style.display='none';
   }
 }
 
@@ -2698,8 +2726,6 @@ function confirmPageFormat(setAsDefault=false){
     const pt=getFmtPt(fmt,_fmtPendingOri);
     PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
   }
-  // Apply format-linked line style before rebuilding pages
-  if(fmt.linStyle) currentLin=fmt.linStyle;
   _applyPageDimensions();
   ensurePages(0);
   ensurePages(1);
@@ -3814,15 +3840,9 @@ function openPageExportModal(){
     const tctx=thumb.getContext('2d');
     tctx.drawImage(p.inkCv,0,0,tw,th);
 
-    // PDF-ready badge
-    const badge=document.createElement('div');
-    badge.style.cssText='position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;pointer-events:none';
-    badge.textContent='↻ PDF…';
-    wrap.appendChild(badge);
-
-    // Drag: always as full-resolution transparent PNG
+    // Drag: full-resolution transparent PNG
     thumb.draggable=true;
-    wrap._gnPdfBytes=null;
+    thumb.title=`Seite ${pg+1} – ziehen oder antippen zum PNG-Download`;
     thumb.addEventListener('dragstart',e=>{
       const exp=document.createElement('canvas');
       exp.width=PAGE_W*2; exp.height=PAGE_H*2;
@@ -3833,19 +3853,8 @@ function openPageExportModal(){
       e.dataTransfer.setData('text/uri-list',url);
     });
 
-    // Click → download GN PDF (or PNG as fallback)
-    thumb.addEventListener('click',()=>{
-      if(wrap._gnPdfBytes){
-        const blob=new Blob([wrap._gnPdfBytes],{type:'application/pdf'});
-        const a=document.createElement('a');
-        a.href=URL.createObjectURL(blob);
-        a.download=`magicwrite_gn_p${pg+1}.pdf`;
-        a.click();
-        setTimeout(()=>URL.revokeObjectURL(a.href),60000);
-      } else {
-        exportPagePNG(pg);
-      }
-    });
+    // Click → download transparent PNG
+    thumb.addEventListener('click',()=>exportPagePNG(pg));
 
     const lbl=document.createElement('div');
     lbl.className='pexp-lbl';
@@ -3856,21 +3865,6 @@ function openPageExportModal(){
     wrap.appendChild(thumb);
     wrap.appendChild(lbl);
     grid.appendChild(wrap);
-
-    // Async: pre-generate GN PDF in background
-    _buildGNPdfBytesForPage(pg).then(bytes=>{
-      if(!bytes) return;
-      wrap._gnPdfBytes=bytes;
-      // Create a persistent blob URL for fallback DownloadURL transport
-      const blobUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
-      wrap._gnPdfBlobUrl=blobUrl;
-      badge.textContent='PDF';
-      badge.style.background='rgba(52,199,89,0.85)';
-      thumb.title=`Seite ${pg+1} – direkt in GoodNotes ziehen oder antippen zum Herunterladen`;
-    }).catch(()=>{
-      badge.textContent='PNG';
-      badge.style.background='rgba(120,120,120,0.6)';
-    });
   });
 
   document.getElementById('page-export-modal').classList.add('open');
@@ -4158,6 +4152,7 @@ function clearDoc(){
 let exCharIdx=0;
 let exStrokes=[];
 let exAutoTimer=null;
+let _exOutOfBounds=false;
 let exRafId=null;
 let exCdStart=0;
 let exDelay=800;
@@ -4186,6 +4181,11 @@ function exBuildDots(){
 function exJumpTo(i){exCancelCd();exStrokes=[];exCharIdx=i;exRefreshChar();exUpdateProgress();}
 
 function exRefreshChar(){
+  // Reset out-of-bounds state for the new character
+  _exOutOfBounds=false;
+  const exOobW=document.getElementById('ex-oob-warn');
+  if(exOobW) exOobW.style.display='none';
+
   const ch=CHARS[exCharIdx];
   document.getElementById('ex-char-disp').textContent=ch;
   document.getElementById('ex-char-name').textContent=exCharLabel(ch);
@@ -4243,7 +4243,20 @@ function exRefreshChar(){
     if(!drawing)return; drawing=false;
     if(cur&&cur.length>=1) exStrokes.push([...cur]);
     cur=null;
-    if(exStrokes.length>0) exStartCd();
+    if(exStrokes.length>0){
+      if(_checkOutOfBounds(exStrokes,newCv.height)){
+        // Cancel auto-advance and warn the user
+        _exOutOfBounds=true;
+        exCancelCd();
+        const oobW=document.getElementById('ex-oob-warn');
+        if(oobW) oobW.style.display='';
+      } else {
+        _exOutOfBounds=false;
+        const oobW=document.getElementById('ex-oob-warn');
+        if(oobW) oobW.style.display='none';
+        exStartCd();
+      }
+    }
   };
   newCv.addEventListener('pointerup',penUp);
   newCv.addEventListener('pointerleave',penUp);
@@ -4317,6 +4330,9 @@ function exBack(){
 
 function exErase(){
   exCancelCd();exStrokes=[];
+  _exOutOfBounds=false;
+  const oobW=document.getElementById('ex-oob-warn');
+  if(oobW) oobW.style.display='none';
   const cv=document.getElementById('ex-cv');
   const ctx=cv.getContext('2d');
   ctx.clearRect(0,0,cv.width,cv.height);

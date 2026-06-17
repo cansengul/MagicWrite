@@ -2697,10 +2697,9 @@ function _snapTextToFormatGrid(){
   _snapLineHpx=lineH; // exact px stored — syncCfg() uses this to avoid rounding drift
   engine.cfg.lineHeight=lineH/capH;
 
-  const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));
-  // Start text at the 2nd ruling line: shift down by one sp so the first ruling
-  // line in the writing area is always left empty.
-  engine.cfg.marginT=Math.max(4,(k+1)*sp-capH);
+  // Place first text baseline exactly on the 2nd ruling line from page top.
+  // 2nd ruling line is at y = 2*sp; baseline lands there when marginT = 2*sp - capH.
+  engine.cfg.marginT=Math.max(4,2*sp-capH);
 
   // Set bottom margin so the last text baseline lands on the PENULTIMATE ruling line,
   // leaving the very last ruling line on the page empty.

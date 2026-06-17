@@ -1908,7 +1908,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <i data-lucide="x" style="width:15px;height:15px"></i>
       </button>
     </div>
-    <div class="pexp-hint">Seite auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen.</div>
+    <div class="pexp-hint">PDF wird im Hintergrund generiert (grünes Badge = bereit). Dann direkt in GoodNotes ziehen oder antippen zum Herunterladen.</div>
     <div class="pexp-grid" id="pexp-grid"></div>
   </div>
 </div>
@@ -2018,7 +2018,8 @@ const MAX_GLYPHS = 300;
 
 // ── FIREBASE DIRTY FLAGS (only sync what changed) ───────────
 // Initialized true so first push after login sends everything
-const _dirty = { glyphs: true, settings: true, customChars: true, prefs: true, format: false };
+const _dirty = { glyphs: true, settings: true, customChars: true, prefs: true };
+let _defaultFormatSaved = false; // becomes true once user clicks "Als Standard festlegen"
 
 // ── APPLE PENCIL DETECTION ──────────────────────────────────
 // Once a pen is detected, finger-touches on draw surfaces are ignored
@@ -2695,7 +2696,8 @@ function confirmPageFormat(setAsDefault=false){
   schedRender();
   saveSettingsLocal();
   if(setAsDefault){
-    _dirty.format=true;
+    _defaultFormatSaved=true;
+    _dirty.settings=true;
     scheduleSync();
   }
   closeFormatPicker();
@@ -3775,7 +3777,7 @@ async function exportPagePNG(pgIdx){
   showToast('Transparentes PNG exportiert ✓');
 }
 
-// ── SEITEN-EXPORT MODAL (GoodNotes drag & drop) ──────────
+// ── SEITEN-EXPORT MODAL (GoodNotes drag & drop as PDF) ───────
 function openPageExportModal(){
   closeExportMenu();
   const grid=document.getElementById('pexp-grid');
@@ -3785,31 +3787,65 @@ function openPageExportModal(){
   const scale=maxSide/Math.max(PAGE_W,PAGE_H);
   const tw=Math.round(PAGE_W*scale);
   const th=Math.round(PAGE_H*scale);
+
   pagesData.forEach((p,pg)=>{
     const wrap=document.createElement('div');
     wrap.className='pexp-thumb';
+    wrap.style.cssText='position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab';
 
-    // Thumbnail canvas (ink only – transparent bg)
+    // Thumbnail canvas (ink only – transparent bg over checkerboard)
     const thumb=document.createElement('canvas');
     thumb.width=tw; thumb.height=th;
+    thumb.style.cssText='border-radius:4px;background:repeating-conic-gradient(#ccc 0% 25%,#fff 0% 50%) 0 0/12px 12px;display:block';
     const tctx=thumb.getContext('2d');
     tctx.drawImage(p.inkCv,0,0,tw,th);
 
-    // Drag as full-resolution transparent PNG
+    // PDF-ready badge
+    const badge=document.createElement('div');
+    badge.style.cssText='position:absolute;top:4px;right:4px;background:rgba(0,0,0,0.55);color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;pointer-events:none';
+    badge.textContent='↻ PDF…';
+    wrap.appendChild(badge);
+
+    // Drag: use pre-generated PDF bytes if ready, else drag transparent PNG as fallback
     thumb.draggable=true;
+    wrap._gnPdfBytes=null;
     thumb.addEventListener('dragstart',e=>{
-      // Build full-size PNG from inkCv
-      const exp=document.createElement('canvas');
-      exp.width=PAGE_W*2; exp.height=PAGE_H*2;
-      exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
-      const url=exp.toDataURL('image/png');
       e.dataTransfer.effectAllowed='copy';
-      try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
-      e.dataTransfer.setData('text/uri-list',url);
+      if(wrap._gnPdfBytes){
+        // Drag as real PDF file — GoodNotes imports this as a new page
+        const file=new File([wrap._gnPdfBytes],`magicwrite_gn_p${pg+1}.pdf`,{type:'application/pdf'});
+        try{
+          e.dataTransfer.items.add(file);
+        }catch(_){
+          // Fallback: blob URL via DownloadURL
+          const blobUrl=wrap._gnPdfBlobUrl||'';
+          try{e.dataTransfer.setData('DownloadURL',`application/pdf:magicwrite_gn_p${pg+1}.pdf:${blobUrl}`);}catch(__){};
+          e.dataTransfer.setData('text/uri-list',blobUrl);
+        }
+      } else {
+        // PDF not ready yet — drag transparent PNG as fallback
+        const exp=document.createElement('canvas');
+        exp.width=PAGE_W*2; exp.height=PAGE_H*2;
+        exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
+        const url=exp.toDataURL('image/png');
+        try{e.dataTransfer.setData('DownloadURL',`image/png:magicwrite_p${pg+1}.png:${url}`);}catch(_){}
+        e.dataTransfer.setData('text/uri-list',url);
+      }
     });
 
-    // Click → download
-    thumb.addEventListener('click',()=>exportPagePNG(pg));
+    // Click → download GN PDF (or PNG as fallback)
+    thumb.addEventListener('click',()=>{
+      if(wrap._gnPdfBytes){
+        const blob=new Blob([wrap._gnPdfBytes],{type:'application/pdf'});
+        const a=document.createElement('a');
+        a.href=URL.createObjectURL(blob);
+        a.download=`magicwrite_gn_p${pg+1}.pdf`;
+        a.click();
+        setTimeout(()=>URL.revokeObjectURL(a.href),60000);
+      } else {
+        exportPagePNG(pg);
+      }
+    });
 
     const lbl=document.createElement('div');
     lbl.className='pexp-lbl';
@@ -3820,9 +3856,24 @@ function openPageExportModal(){
     wrap.appendChild(thumb);
     wrap.appendChild(lbl);
     grid.appendChild(wrap);
+
+    // Async: pre-generate GN PDF in background
+    _buildGNPdfBytesForPage(pg).then(bytes=>{
+      if(!bytes) return;
+      wrap._gnPdfBytes=bytes;
+      // Create a persistent blob URL for fallback DownloadURL transport
+      const blobUrl=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+      wrap._gnPdfBlobUrl=blobUrl;
+      badge.textContent='PDF';
+      badge.style.background='rgba(52,199,89,0.85)';
+      thumb.title=`Seite ${pg+1} – direkt in GoodNotes ziehen oder antippen zum Herunterladen`;
+    }).catch(()=>{
+      badge.textContent='PNG';
+      badge.style.background='rgba(120,120,120,0.6)';
+    });
   });
+
   document.getElementById('page-export-modal').classList.add('open');
-  // Re-init Lucide icons for the close button
   if(typeof lucide!=='undefined') lucide.createIcons();
 }
 function closePageExportModal(){
@@ -3833,15 +3884,14 @@ document.getElementById('page-export-modal').addEventListener('click',e=>{
   if(e.target===document.getElementById('page-export-modal')) closePageExportModal();
 });
 
-// ── PER-PAGE GOODNOTES PDF (transparent background) ──────
-async function exportPageGoodNotesPDF(pgIdx){
+// ── SHARED: build GoodNotes transparent PDF bytes for one page ──
+async function _buildGNPdfBytesForPage(pgIdx){
   if(!window.PDFLib) await loadScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js');
-  showToast('Erstelle GN PDF für Seite '+(pgIdx+1)+'…');
   syncCfg();
   const text=document.getElementById('txt').value;
-  if(!text){showToast('Kein Text.');return;}
+  if(!text) return null;
   const plan=engine.computeStrokePlan(text).filter(s=>s.page===pgIdx);
-  if(!plan.length){showToast('Keine Zeichen auf Seite '+(pgIdx+1)+'.');return;}
+  if(!plan.length) return null;
   const {PDFDocument,PDFName,PDFRawStream}=window.PDFLib;
   const pdfDoc=await PDFDocument.create();
   const fmtObj=PAGE_FORMATS.find(f=>f.key===currentPageFormat)||PAGE_FORMATS[0];
@@ -3849,7 +3899,6 @@ async function exportPageGoodNotesPDF(pgIdx){
   const PT_W=fmtPt.w, PT_H=fmtPt.h;
   const SX=PT_W/PAGE_W, SY=PT_H/PAGE_H;
   const page=pdfDoc.addPage([PT_W,PT_H]);
-  // No background — fully transparent page
   const hex=engine.cfg.inkColor.replace('#','');
   const inkR=parseInt(hex.slice(0,2),16)/255;
   const inkG=parseInt(hex.slice(2,4),16)/255;
@@ -3857,16 +3906,18 @@ async function exportPageGoodNotesPDF(pgIdx){
   const f=v=>v.toFixed(4);
   let annotsArr=page.node.get(PDFName.of('Annots'));
   if(!annotsArr){annotsArr=pdfDoc.context.obj([]);page.node.set(PDFName.of('Annots'),annotsArr);}
+  // Catmull-Rom path commands for PDF ink annotations
   function buildPathCmds(pts){
     if(pts.length<2) return `${f(pts[0].x)} ${f(pts[0].y)} m\n${f(pts[0].x)} ${f(pts[0].y)} l`;
-    const out=[`${f(pts[0].x)} ${f(pts[0].y)} m`];let cur=pts[0];
-    for(let i=1;i<pts.length-1;i++){
-      const cp=pts[i];const mid={x:(pts[i].x+pts[i+1].x)/2,y:(pts[i].y+pts[i+1].y)/2};
-      const c1x=cur.x+2/3*(cp.x-cur.x),c1y=cur.y+2/3*(cp.y-cur.y);
-      const c2x=mid.x+2/3*(cp.x-mid.x),c2y=mid.y+2/3*(cp.y-mid.y);
-      out.push(`${f(c1x)} ${f(c1y)} ${f(c2x)} ${f(c2y)} ${f(mid.x)} ${f(mid.y)} c`);cur=mid;
+    const t=0.5;
+    const out=[`${f(pts[0].x)} ${f(pts[0].y)} m`];
+    for(let i=0;i<pts.length-1;i++){
+      const p0=pts[Math.max(0,i-1)],p1=pts[i],p2=pts[i+1],p3=pts[Math.min(pts.length-1,i+2)];
+      const cp1x=p1.x+(p2.x-p0.x)*t/3, cp1y=p1.y+(p2.y-p0.y)*t/3;
+      const cp2x=p2.x-(p3.x-p1.x)*t/3, cp2y=p2.y-(p3.y-p1.y)*t/3;
+      out.push(`${f(cp1x)} ${f(cp1y)} ${f(cp2x)} ${f(cp2y)} ${f(p2.x)} ${f(p2.y)} c`);
     }
-    out.push(`${f(pts[pts.length-1].x)} ${f(pts[pts.length-1].y)} l`);return out.join('\n');
+    return out.join('\n');
   }
   for(const stroke of plan){
     if(stroke.pts.length<2) continue;
@@ -3885,7 +3936,14 @@ async function exportPageGoodNotesPDF(pgIdx){
     const annot=pdfDoc.context.obj({Type:PDFName.of('Annot'),Subtype:PDFName.of('Ink'),Rect:[rx1,ry1,rx2,ry2],InkList:[flatPts],BS:bsDict,C:[inkR,inkG,inkB],CA:1,F:4,P:page.ref,AP:pdfDoc.context.obj({N:apRef})});
     annotsArr.push(pdfDoc.context.register(annot));
   }
-  const pdfBytes=await pdfDoc.save();
+  return await pdfDoc.save();
+}
+
+// ── PER-PAGE GOODNOTES PDF DOWNLOAD ──────────────────────────
+async function exportPageGoodNotesPDF(pgIdx){
+  showToast('Erstelle GN PDF für Seite '+(pgIdx+1)+'…');
+  const pdfBytes = await _buildGNPdfBytesForPage(pgIdx);
+  if(!pdfBytes){showToast('Keine Zeichen auf Seite '+(pgIdx+1)+'.');return;}
   const blob=new Blob([pdfBytes],{type:'application/pdf'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='magicwrite_gn_p'+(pgIdx+1)+'_'+Date.now()+'.pdf';a.click();
@@ -4585,7 +4643,7 @@ async function loadFromFirebase(){
     if(!data){
       setSyncStatus('synced');
       if(store.count() > 0){
-        Object.keys(_dirty).forEach(k => { if(k!=='format') _dirty[k] = true; });
+        Object.keys(_dirty).forEach(k => _dirty[k] = true);
         scheduleSync();
         showToast('Zeichen werden in den Account hochgeladen');
       }
@@ -4618,8 +4676,8 @@ async function loadFromFirebase(){
         if(!cloudCC.length) dataProtected.customChars = null;
       }catch(_){ dataProtected.customChars = null; }
       applyFirebaseData(dataProtected, true);
-      // Upload ALL local data to cloud (except format — only synced via "Als Standard festlegen")
-      Object.keys(_dirty).forEach(k => { if(k!=='format') _dirty[k] = true; });
+      // Upload ALL local data to cloud
+      Object.keys(_dirty).forEach(k => _dirty[k] = true);
       // Delay subscribe until after upload to prevent race overwrite
       setTimeout(() => subscribeToFirebase(), 2500);
       scheduleSync();
@@ -4822,7 +4880,8 @@ function applyFirebaseData(data, isInitialLoad){
         if(s.jit != null){ setEl('jit-sl',s.jit);const l=document.getElementById('jit-val');if(l)l.textContent=parseFloat(s.jit).toFixed(1); }
         if(s.ps  != null){ setEl('ps',s.ps);     const l=document.getElementById('ps-val'); if(l)l.textContent=s.ps; }
         if(s.ink != null){ const el=document.getElementById('ink-col'); if(el) el.value=s.ink; }
-        // Restore page format first (quiet, no sync)
+        // Restore page format from cloud (only present if user previously clicked "Als Standard festlegen")
+        if(s.fmt) _defaultFormatSaved = true; // keep syncing fmt on future settings writes
         if(s.fmt){
           currentPageFormat=s.fmt;
           currentOrientation=s.ori||'portrait';
@@ -4859,32 +4918,6 @@ function applyFirebaseData(data, isInitialLoad){
         const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
         document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
         schedRender();
-      }
-    }catch(e){}
-
-    // ── Restore default format from cloud (only exists if user clicked "Als Standard festlegen")
-    try{
-      if(data.defaultFormat){
-        const df=JSON.parse(data.defaultFormat);
-        if(df.fmt){
-          currentPageFormat=df.fmt;
-          currentOrientation=df.ori||'portrait';
-          if(df.fmt==='custom'){
-            PAGE_W=parseInt(df.customW)||794;
-            PAGE_H=parseInt(df.customH)||1123;
-          } else {
-            const cfmt=PAGE_FORMATS.find(f=>f.key===df.fmt);
-            if(cfmt){
-              const pt=getFmtPt(cfmt,df.ori||'portrait');
-              PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
-              if(cfmt.linStyle) currentLin=cfmt.linStyle;
-            }
-          }
-          _applyPageDimensions();
-          ensurePages(0); ensurePages(1);
-          updateFmtToolbarLabel();
-          schedRender();
-        }
       }
     }catch(e){}
 
@@ -4939,7 +4972,7 @@ async function pushToFirebase(){
     if(sending.settings){
       const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
       const pgc    = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim() || '#FFFFFF';
-      payload.settings = JSON.stringify({
+      const _settingsObj = {
         ls:  document.getElementById('ls-sl').value,
         ws:  document.getElementById('ws-sl').value,
         lh:  document.getElementById('lh-sl').value,
@@ -4948,13 +4981,15 @@ async function pushToFirebase(){
         jit: document.getElementById('jit-sl').value,
         ps:  document.getElementById('ps').value,
         ink: document.getElementById('ink-col').value
-      }); // fmt/ori/customW/customH synced separately via _dirty.format; lin, pgc etc. are local-only
-    }
-    if(sending.format){
-      payload.defaultFormat = JSON.stringify({
-        fmt: currentPageFormat, ori: currentOrientation,
-        customW: PAGE_W, customH: PAGE_H
-      });
+      };
+      // Only sync page format to cloud when the user explicitly clicked "Als Standard festlegen"
+      if(_defaultFormatSaved){
+        _settingsObj.fmt=currentPageFormat;
+        _settingsObj.ori=currentOrientation;
+        _settingsObj.customW=PAGE_W;
+        _settingsObj.customH=PAGE_H;
+      }
+      payload.settings = JSON.stringify(_settingsObj); // lin, pgc etc. are local-only
     }
     if(sending.prefs){
       payload.preferences = JSON.stringify({

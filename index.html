@@ -3557,6 +3557,7 @@ function loadSettings(){
     if(s.ps  != null){setEl('ps',s.ps);     const lbl=document.getElementById('ps-val'); if(lbl)lbl.textContent=s.ps;}
     if(s.ink != null){const el=document.getElementById('ink-col');if(el)el.value=s.ink;}
     if(s.lin)  setLin(s.lin);
+    _linOverride=false; // restoring saved settings is not a manual user choice
     if(s.pgs !== undefined) currentPageStripe = s.pgs||'';
     if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
     if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}

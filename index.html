@@ -2908,29 +2908,28 @@ function setLin(t){
   currentLin=t;
   _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  // Preserve line spacing when the user just changes paper style.
-  // If a grid-snap was active (_snapLineHpx > 0), bake the current computed
-  // line height into the slider and release the snap lock. This ensures syncCfg()
-  // keeps exactly the same line height for the new style without re-running
-  // _snapTextToFormatGrid() (which would recalculate from the new grid spacing,
-  // auto-reduce the font size, and change the visible line spacing).
-  if(_snapLineHpx>0){
-    const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
-    const capH=(N.BL-N.CAP)/N.H*fontSize;
-    const bakedLH=_snapLineHpx/capH;
-    if(bakedLH>=1.0){
-      const lhEl=document.getElementById('lh-sl');
-      const lhVal=document.getElementById('lh-val');
-      if(lhEl){lhEl.value=bakedLH;syncPct(lhEl);}
-      if(lhVal) lhVal.textContent=bakedLH.toFixed(1);
-      engine.cfg.lineHeight=bakedLH;
-    }
-    _snapLineHpx=0; // release snap — syncCfg will now read from slider
-  }
-  // Adjust left margin for the red stripe without re-snapping anything else
   if(t==='gn-lined'||t==='gn-notepad'||t==='ruled'){
-    engine.cfg.marginL=ptToPx(46)+12;
+    // Ruled styles have a fixed line grid — re-snap marginT, marginL, and lineHeight
+    // so text baselines sit exactly on the ruling lines, just like confirmPageFormat() does.
+    engine.cfg.marginT=66;
+    _snapTextToFormatGrid();
   } else {
+    // Non-ruled styles (grid, dot, blank) have no fixed baseline grid.
+    // Preserve the current line spacing instead of re-snapping to a different pitch.
+    // Bake _snapLineHpx into the slider so syncCfg() keeps reading the same value.
+    if(_snapLineHpx>0){
+      const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
+      const capH=(N.BL-N.CAP)/N.H*fontSize;
+      const bakedLH=_snapLineHpx/capH;
+      if(bakedLH>=1.0){
+        const lhEl=document.getElementById('lh-sl');
+        const lhVal=document.getElementById('lh-val');
+        if(lhEl){lhEl.value=bakedLH;syncPct(lhEl);}
+        if(lhVal) lhVal.textContent=bakedLH.toFixed(1);
+        engine.cfg.lineHeight=bakedLH;
+      }
+      _snapLineHpx=0;
+    }
     engine.cfg.marginL=72;
   }
   saveSettingsLocal();

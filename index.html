@@ -2908,8 +2908,8 @@ function setLin(t){
   currentLin=t;
   _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  // Adjust left margin for red-stripe styles, but do NOT change line spacing
-  engine.cfg.marginL=(t==='gn-lined'||t==='gn-notepad'||t==='ruled')?ptToPx(46)+12:72;
+  // Snap text line height and margins to the new grid
+  _snapTextToFormatGrid();
   saveSettingsLocal();
   schedRender();
 }

@@ -2615,29 +2615,42 @@ function selectFmtKey(key){
 let _snapLineHpx=0;
 
 function _snapTextToFormatGrid(){
-  const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
-  const capH=(N.BL-N.CAP)/N.H*fontSize;
   let sp=0;
   if(currentLin==='gn-lined') sp=ptToPx(17);
   else if(currentLin==='gn-notepad') sp=ptToPx(14);
   else if(currentLin==='ruled'||currentLin==='grid') sp=Math.round(ptToPx(36));
   else if(currentLin==='dot') sp=Math.round(ptToPx(30));
   if(!sp) return; // blank — nothing to snap to
-  // Smallest m such that m×sp ≥ capH (ceil ensures lineH ≥ capH → lh ≥ 1.0)
-  const m=Math.max(1,Math.ceil(capH/sp))||1;
-  const lineH=m*sp; // exact integer px
-  _snapLineHpx=lineH; // store exact px so syncCfg() avoids toFixed drift
-  engine.cfg.lineHeight=lineH/capH; // set precise ratio (not rounded)
+
+  // Read current fontSize; auto-reduce if capH ≥ sp (would give m > 1 → skipped ruling lines)
+  let fontSize=parseInt(document.getElementById('fs-sl').value)||52;
+  let capH=(N.BL-N.CAP)/N.H*fontSize;
+  if(capH>=sp){
+    // Largest integer fontSize where capH < sp  →  m = 1 guaranteed
+    fontSize=Math.max(16, Math.floor(sp*N.H/(N.BL-N.CAP)));
+    capH=(N.BL-N.CAP)/N.H*fontSize;
+    const fsEl=document.getElementById('fs-sl');
+    const fsVal=document.getElementById('fs-val');
+    if(fsEl){fsEl.value=fontSize;syncPct(fsEl);}
+    if(fsVal) fsVal.textContent=fontSize;
+  }
+
+  const m=Math.max(1,Math.ceil(capH/sp))||1; // always 1 after auto-reduce
+  const lineH=m*sp;
+  _snapLineHpx=lineH; // exact px stored — syncCfg() uses this to avoid rounding drift
+  engine.cfg.lineHeight=lineH/capH;
+
   const k=Math.max(1,Math.round((engine.cfg.marginT+capH)/sp));
-  const newMT=Math.max(4,k*sp-capH);
-  engine.cfg.marginT=newMT;
-  // Only push left margin past the red stripe for formats that actually draw it
+  engine.cfg.marginT=Math.max(4,k*sp-capH);
+
+  // Push left margin past the red stripe only for line styles that draw it
   if(currentLin==='gn-lined'||currentLin==='gn-notepad'||currentLin==='ruled'){
     engine.cfg.marginL=ptToPx(46)+12;
   } else {
-    engine.cfg.marginL=72; // default left margin — no stripe
+    engine.cfg.marginL=72;
   }
-  // Reflect snapped lineHeight on slider (display only — syncCfg uses _snapLineHpx for precision)
+
+  // Reflect on sliders (display only — syncCfg drives the render via _snapLineHpx)
   const displayLH=parseFloat((lineH/capH).toFixed(2));
   const lhEl=document.getElementById('lh-sl');
   const lhVal=document.getElementById('lh-val');
@@ -3209,7 +3222,14 @@ function syncCfg(){
   engine.cfg.fontSize    =parseInt(document.getElementById('fs-sl').value);
   if(_snapLineHpx>0){
     const capH=(N.BL-N.CAP)/N.H*engine.cfg.fontSize;
-    engine.cfg.lineHeight=_snapLineHpx/capH;
+    const snappedLH=_snapLineHpx/capH;
+    if(snappedLH>=1.0){
+      engine.cfg.lineHeight=snappedLH;
+    } else {
+      // capH grew beyond _snapLineHpx (font size increased manually) — fall back to slider
+      _snapLineHpx=0;
+      engine.cfg.lineHeight=parseFloat(document.getElementById('lh-sl').value);
+    }
   } else {
     engine.cfg.lineHeight=parseFloat(document.getElementById('lh-sl').value);
   }
@@ -3232,7 +3252,7 @@ function schedRender(){renderPending=true}
   }
 })();
 
-function onFsChange(v){document.getElementById('fs-val').textContent=v;schedRender()}
+function onFsChange(v){_snapLineHpx=0;document.getElementById('fs-val').textContent=v;schedRender()}
 function onJitChange(v){document.getElementById('jit-val').textContent=parseFloat(v).toFixed(1);schedRender()}
 
 // ═══════════════════════════════════════════════════════════

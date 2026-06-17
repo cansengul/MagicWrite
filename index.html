@@ -3581,6 +3581,10 @@ function loadSettings(){
     if(s.ink != null){const el=document.getElementById('ink-col');if(el)el.value=s.ink;}
     if(s.lin)  setLin(s.lin);
     _linOverride=false; // restoring saved settings is not a manual user choice
+    // Snap marginT (and lineHeight) to the ruling grid so text baselines sit on the
+    // lines immediately on load — same as confirmPageFormat() does after a format change.
+    engine.cfg.marginT=66;
+    _snapTextToFormatGrid();
     if(s.pgs !== undefined) currentPageStripe = s.pgs||'';
     if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
     if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
@@ -4958,6 +4962,9 @@ function applyFirebaseData(data, isInitialLoad){
         }
         if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
         renderCustomColors();
+        // Snap marginT to the ruling grid after cloud settings are fully applied
+        engine.cfg.marginT=66;
+        _snapTextToFormatGrid();
         // Save to cookie (without triggering another cloud sync)
         const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
         document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';

@@ -2674,7 +2674,8 @@ function _snapTextToFormatGrid(){
   let sp=0;
   if(currentLin==='gn-lined') sp=ptToPx(17);
   else if(currentLin==='gn-notepad') sp=ptToPx(14);
-  else if(currentLin==='ruled'||currentLin==='grid') sp=Math.round(ptToPx(36));
+  else if(currentLin==='ruled') sp=Math.round(ptToPx(36));
+  else if(currentLin==='grid') sp=ptToPx(17); // match gn-lined pitch → text sits in boxes
   else if(currentLin==='dot') sp=Math.round(ptToPx(30));
   if(!sp) return; // blank — nothing to snap to
 
@@ -2882,12 +2883,13 @@ function drawLin(ctx,w,h,type){
   }
 
   ctx.strokeStyle=fgLine(0.36);ctx.lineWidth=0.8;
-  if(type==='ruled'||type==='grid'){
-    const sp=Math.round(ptToPx(36)); // ~48px
+  if(type==='ruled'){
+    const sp=Math.round(ptToPx(36)); // ~48px college-ruled
     for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   }
   if(type==='grid'){
-    const sp=Math.round(ptToPx(36)); // same pitch as horizontal lines → square cells
+    const sp=Math.round(ptToPx(17)); // ~23px — matches gn-lined pitch so text sits in boxes
+    for(let y=sp;y<h;y+=sp){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
     for(let x=sp;x<w;x+=sp){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
   }
   if(type==='dot'){
@@ -2908,15 +2910,14 @@ function setLin(t){
   currentLin=t;
   _linOverride=true; // user explicitly chose a style — block format linStyle from overriding
   pagesData.forEach(p=>drawLin(p.bgCtx,PAGE_W,PAGE_H,t));
-  if(t==='gn-lined'||t==='gn-notepad'||t==='ruled'){
-    // Ruled styles have a fixed line grid — re-snap marginT, marginL, and lineHeight
-    // so text baselines sit exactly on the ruling lines, just like confirmPageFormat() does.
+  if(t==='gn-lined'||t==='gn-notepad'||t==='ruled'||t==='grid'){
+    // Styles with a fixed ruling grid — re-snap marginT, marginL, and lineHeight
+    // so text baselines sit exactly on the lines/boxes (grid uses same 17pt pitch as gn-lined).
     engine.cfg.marginT=66;
     _snapTextToFormatGrid();
   } else {
-    // Non-ruled styles (grid, dot, blank) have no fixed baseline grid.
-    // Preserve the current line spacing instead of re-snapping to a different pitch.
-    // Bake _snapLineHpx into the slider so syncCfg() keeps reading the same value.
+    // Styles without a fixed baseline grid (dot, blank).
+    // Preserve the current line spacing instead of re-snapping.
     if(_snapLineHpx>0){
       const fontSize=parseInt(document.getElementById('fs-sl').value)||52;
       const capH=(N.BL-N.CAP)/N.H*fontSize;

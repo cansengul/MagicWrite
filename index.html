@@ -2153,6 +2153,22 @@ function _getLowerXScale(ch){
   return 0.60; // regular x-height lowercase
 }
 
+// Parses a glyph JSON string that may be in the old format ({ch:variants})
+// or the new versioned format ({_v:2, g:{ch:variants}}), and always returns
+// the plain glyph object {ch:variants}. Used throughout the Firebase sync logic.
+function _parseGlyphs(str){
+  if(!str) return {};
+  try{
+    const d=JSON.parse(str);
+    if(d&&typeof d==='object'&&d._v===2&&d.g) return d.g;
+    return d||{};
+  }catch(_){ return {}; }
+}
+
+// Returns a canonical JSON string of just the glyph data (no version wrapper)
+// for equality comparisons between local and cloud.
+function _glyphsJSON(){ return JSON.stringify(store.g||{}); }
+
 // ═══════════════════════════════════════════════════════════
 // OUT-OF-BOUNDS CHECK
 // Returns true if any point in strokes goes above the cap line
@@ -3755,10 +3771,11 @@ function importGlyphs(event){
     try{
       const parsed=JSON.parse(e.target.result);
       // parsed.glyphs is a JSON string (from exportGlyphs), or parsed itself is the object
+      // Support both old ({ch:variants}) and new ({_v:2,g:{ch:variants}}) export formats
       const glyphsStr = parsed.glyphs != null
         ? (typeof parsed.glyphs === 'string' ? parsed.glyphs : JSON.stringify(parsed.glyphs))
         : JSON.stringify(parsed);
-      const glyphsObj = JSON.parse(glyphsStr);
+      const glyphsObj = _parseGlyphs(glyphsStr);
       showImportPreview(glyphsObj);
     }catch(err){
       showToast('Fehler beim Importieren – ungültige Datei');
@@ -4805,8 +4822,7 @@ async function loadFromFirebase(){
     const localKeys  = Object.keys(store.g || {});
     const localCount = localKeys.length;
     const cloudGlyphsStr = data.glyphs || null;
-    let   cloudObj = {};
-    if(cloudGlyphsStr){ try{ cloudObj = JSON.parse(cloudGlyphsStr); }catch(_){} }
+    const cloudObj = _parseGlyphs(cloudGlyphsStr);
     const cloudKeys  = Object.keys(cloudObj);
     const cloudCount = cloudKeys.length;
 
@@ -4839,13 +4855,13 @@ async function loadFromFirebase(){
     }
 
     // ── CASE D: Same key sets → check if data is identical
-    const localStr = store.toJSON();
     const cloudSet = new Set(cloudKeys);
 
     const sameKeys = localKeys.length === cloudKeys.length
                      && localKeys.every(k => cloudSet.has(k));
 
-    if(sameKeys && localStr === cloudGlyphsStr){
+    // Compare raw glyph data (format-neutral, both sides unwrapped)
+    if(sameKeys && _glyphsJSON() === JSON.stringify(cloudObj)){
       // Perfectly identical → apply non-glyph data only, no prompt
       const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
       applyFirebaseData(dataWithoutGlyphs, true);
@@ -4932,9 +4948,9 @@ function mergeCombine(){
     // ── Merge glyphs: add cloud chars local doesn't have ──
     if(d.glyphs){
       try{
-        const cloudObj = JSON.parse(d.glyphs);
-        Object.keys(cloudObj).forEach(ch => {
-          if(!store.has(ch)){ store.g[ch] = cloudObj[ch]; }
+        const mergeObj = _parseGlyphs(d.glyphs);
+        Object.keys(mergeObj).forEach(ch => {
+          if(!store.has(ch)){ store.g[ch] = mergeObj[ch]; }
         });
         buildGrid(); refreshChar(); updateProg(); schedRender();
       }catch(e){ console.warn('Merge-Fehler:', e); }
@@ -4965,8 +4981,7 @@ function subscribeToFirebase(){
     if(localCount > 0 && data.glyphs !== undefined){
       let cloudCount = 0;
       try{
-        const cloudObj = JSON.parse(data.glyphs || '{}');
-        cloudCount = Object.keys(cloudObj).length;
+        cloudCount = Object.keys(_parseGlyphs(data.glyphs)).length;
       }catch(_){}
       if(cloudCount < localCount){
         // Cloud has fewer glyphs than local — skip glyph portion, apply rest

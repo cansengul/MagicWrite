@@ -192,7 +192,20 @@ header{
   -webkit-overflow-scrolling:touch;
 }
 #panel-left{width:278px;border-right:0.5px solid var(--ui-border)}
-#panel-right{width:236px;border-left:0.5px solid var(--ui-border)}
+#panel-right{width:236px;border-left:0.5px solid var(--ui-border);transition:width .2s;position:relative}
+#panel-right.collapsed{width:28px;padding:2px 0;overflow:hidden}
+#panel-right.collapsed > :not(#right-toggle){display:none!important}
+#right-toggle{
+  display:flex;align-items:center;justify-content:center;
+  width:100%;min-height:28px;border:none;cursor:pointer;
+  background:transparent;color:var(--ink-soft);font-size:13px;
+  flex-shrink:0;border-radius:4px;
+}
+#right-toggle:hover{background:var(--ui-border);color:var(--ink)}
+#panel-right.collapsed #right-toggle{
+  writing-mode:vertical-rl;min-height:80px;height:80px;width:100%;font-size:9px;
+  letter-spacing:0.05em;gap:0;
+}
 .psec{
   background:var(--paper);
   border-radius:var(--r);
@@ -1298,6 +1311,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 <!-- RIGHT PANEL -->
 <aside id="panel-right">
+  <button id="right-toggle" onclick="toggleRightPanel()" title="Seitenleiste ausblenden">◀</button>
   <div class="psec">
     <div class="plabel">Seitenfarbe</div>
     <div class="pg-swatches">
@@ -1399,6 +1413,38 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           <input type="range" id="lh-sl" min="1.0" max="3.0" step=".1" value="1.6" oninput="_snapLineHpx=0;document.getElementById('lh-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
           <button class="slider-rst" onclick="resetSlider('lh-sl')" title="Zurücksetzen">↺</button>
         </div>
+      </div>
+    </div>
+  </div>
+  <div class="pdivider"></div>
+  <div class="psec" id="psec-margins">
+    <div class="plabel">Seitenränder</div>
+    <div class="srow">
+      <label>Oben <span id="marginT-val">66</span>px</label>
+      <div class="srow-track">
+        <input type="range" id="marginT-sl" min="0" max="220" step="1" value="66" oninput="_marginOverride=true;document.getElementById('marginT-val').textContent=this.value;schedRender();saveSettings()">
+        <button class="slider-rst" onclick="resetMarginToFormatDefault('T')" title="Auf Format-Standard zurücksetzen">↺</button>
+      </div>
+    </div>
+    <div class="srow">
+      <label>Unten <span id="marginB-val">60</span>px</label>
+      <div class="srow-track">
+        <input type="range" id="marginB-sl" min="0" max="220" step="1" value="60" oninput="_marginOverride=true;document.getElementById('marginB-val').textContent=this.value;schedRender();saveSettings()">
+        <button class="slider-rst" onclick="resetMarginToFormatDefault('B')" title="Auf Format-Standard zurücksetzen">↺</button>
+      </div>
+    </div>
+    <div class="srow">
+      <label>Links <span id="marginL-val">72</span>px</label>
+      <div class="srow-track">
+        <input type="range" id="marginL-sl" min="0" max="220" step="1" value="72" oninput="_marginOverride=true;document.getElementById('marginL-val').textContent=this.value;schedRender();saveSettings()">
+        <button class="slider-rst" onclick="resetMarginToFormatDefault('L')" title="Auf Format-Standard zurücksetzen">↺</button>
+      </div>
+    </div>
+    <div class="srow">
+      <label>Rechts <span id="marginR-val">52</span>px</label>
+      <div class="srow-track">
+        <input type="range" id="marginR-sl" min="0" max="220" step="1" value="52" oninput="_marginOverride=true;document.getElementById('marginR-val').textContent=this.value;schedRender();saveSettings()">
+        <button class="slider-rst" onclick="resetMarginToFormatDefault('R')" title="Auf Format-Standard zurücksetzen">↺</button>
       </div>
     </div>
   </div>
@@ -2092,6 +2138,12 @@ const N = {
     const isLower = ch && ((ch>='a'&&ch<='z')||'äöü'.includes(ch));
     if(isLower){
       const zsx=_getLowerXScale(ch);
+      // Very narrow glyphs (e.g. 'i', 'l'): x-variation is drawing noise —
+      // centering avoids the massive x-amplification that causes crooked results.
+      if(rw < 25){
+        const cx=this.W/2;
+        return strokes.map(s=>s.map(p=>({x:cx,y:p.y*sy,p:p.p??0.5})));
+      }
       const scX=(this.W*0.90*zsx)/(rw||1);
       const swX=(rw||1)*scX;
       const oxX=(this.W-swX)/2;
@@ -2731,6 +2783,10 @@ function selectFmtKey(key){
 // syncCfg() uses this directly so there is no floating-point drift across lines.
 // Cleared to 0 when the user manually moves the lh-sl slider.
 let _snapLineHpx=0;
+// Format-specific margin defaults — updated by _snapTextToFormatGrid() on each format/style change
+let _formatMarginDefaults={T:66,B:60,L:72,R:52};
+// True only when the user manually moved a margin slider; gates cookie+Firebase persistence
+let _marginOverride=false;
 
 function _snapTextToFormatGrid(){
   let sp=0;
@@ -2739,7 +2795,12 @@ function _snapTextToFormatGrid(){
   else if(currentLin==='ruled') sp=Math.round(ptToPx(36));
   else if(currentLin==='grid') sp=ptToPx(17); // match gn-lined pitch → text sits in boxes
   else if(currentLin==='dot') sp=Math.round(ptToPx(30));
-  if(!sp) return; // blank — nothing to snap to
+  if(!sp){
+    // Blank style — no grid to snap to; reset to engine defaults
+    _formatMarginDefaults={T:66,B:60,L:72,R:52};
+    _marginOverride=false;
+    return;
+  }
 
   // Read current fontSize; auto-reduce if capH ≥ sp (would give m > 1 → skipped ruling lines)
   let fontSize=parseInt(document.getElementById('fs-sl').value)||52;
@@ -2782,6 +2843,23 @@ function _snapTextToFormatGrid(){
   const lhVal=document.getElementById('lh-val');
   if(lhEl){lhEl.value=displayLH;syncPct(lhEl);}
   if(lhVal) lhVal.textContent=displayLH.toFixed(1);
+  // Reflect computed margins on sliders so syncCfg() reads correct values
+  function _setMarginSlider(id,valId,v){
+    const el=document.getElementById(id); if(!el) return;
+    el.value=Math.round(v); syncPct(el);
+    const lbl=document.getElementById(valId); if(lbl) lbl.textContent=Math.round(v);
+  }
+  _setMarginSlider('marginT-sl','marginT-val',engine.cfg.marginT);
+  _setMarginSlider('marginB-sl','marginB-val',engine.cfg.marginB);
+  _setMarginSlider('marginL-sl','marginL-val',engine.cfg.marginL);
+  // Store computed margins as format defaults for the reset button
+  _formatMarginDefaults={
+    T:Math.round(engine.cfg.marginT),
+    B:Math.round(engine.cfg.marginB),
+    L:Math.round(engine.cfg.marginL),
+    R:Math.round(engine.cfg.marginR||52)
+  };
+  _marginOverride=false;
 }
 
 function confirmPageFormat(setAsDefault=false){
@@ -3391,6 +3469,10 @@ function syncCfg(){
   engine.cfg.inkColor    =document.getElementById('ink-col').value;
   engine.cfg.conn        ='none';
   engine.cfg.strokeWidth =parseFloat(document.getElementById('sw-sl').value);
+  const _mT=document.getElementById('marginT-sl'); if(_mT) engine.cfg.marginT=parseInt(_mT.value);
+  const _mB=document.getElementById('marginB-sl'); if(_mB) engine.cfg.marginB=parseInt(_mB.value);
+  const _mL=document.getElementById('marginL-sl'); if(_mL) engine.cfg.marginL=parseInt(_mL.value);
+  const _mR=document.getElementById('marginR-sl'); if(_mR) engine.cfg.marginR=parseInt(_mR.value);
 }
 
 function schedRender(){renderPending=true}
@@ -3600,6 +3682,13 @@ function saveSettings(){
     customW: PAGE_W,
     customH: PAGE_H
   };
+  // Only persist margin values when the user explicitly moved a slider
+  if(_marginOverride){
+    s.mT=document.getElementById('marginT-sl')?.value||'66';
+    s.mB=document.getElementById('marginB-sl')?.value||'60';
+    s.mL=document.getElementById('marginL-sl')?.value||'72';
+    s.mR=document.getElementById('marginR-sl')?.value||'52';
+  }
   const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
   document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
   _dirty.settings = true;
@@ -3629,6 +3718,12 @@ function saveSettingsLocal(){
     customW: PAGE_W,
     customH: PAGE_H
   };
+  if(_marginOverride){
+    s.mT=document.getElementById('marginT-sl')?.value||'66';
+    s.mB=document.getElementById('marginB-sl')?.value||'60';
+    s.mL=document.getElementById('marginL-sl')?.value||'72';
+    s.mR=document.getElementById('marginR-sl')?.value||'52';
+  }
   const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
   document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
 }
@@ -3676,6 +3771,19 @@ function loadSettings(){
     // lines immediately on load — same as confirmPageFormat() does after a format change.
     engine.cfg.marginT=66;
     _snapTextToFormatGrid();
+    // After snapping, restore manually-saved margins (if any) — they override format defaults
+    if(s.mT != null){
+      function _rstMrgSl(id,valId,v){
+        const el=document.getElementById(id); if(!el) return;
+        el.value=v; syncPct(el);
+        const lbl=document.getElementById(valId); if(lbl) lbl.textContent=v;
+      }
+      _rstMrgSl('marginT-sl','marginT-val',parseInt(s.mT)||66);
+      _rstMrgSl('marginB-sl','marginB-val',parseInt(s.mB)||60);
+      _rstMrgSl('marginL-sl','marginL-val',parseInt(s.mL)||72);
+      _rstMrgSl('marginR-sl','marginR-val',parseInt(s.mR)||52);
+      _marginOverride=true; // mark so next save persists them
+    }
     if(s.pgs !== undefined) currentPageStripe = s.pgs||'';
     if(s.pgc) setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
     if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
@@ -3861,8 +3969,10 @@ async function doImport(){
 
   // Merge only selected chars into store
   const existingObj = JSON.parse(store.toJSON());
+  // existingObj is {_v:2, g:{ch:variants}} — add imported chars inside .g
+  if(!existingObj.g) existingObj.g = {};
   selected.forEach(ch=>{
-    existingObj[ch] = importPreviewData[ch];
+    existingObj.g[ch] = importPreviewData[ch];
   });
   store.fromJSON(JSON.stringify(existingObj));
 
@@ -4752,6 +4862,26 @@ document.addEventListener('click', e => {
   if(wrap && !wrap.contains(e.target)) closeUserMenu();
 });
 
+function toggleRightPanel(){
+  const p=document.getElementById('panel-right');
+  const btn=document.getElementById('right-toggle');
+  const collapsed=p.classList.toggle('collapsed');
+  btn.textContent=collapsed?'▶':'◀';
+  btn.title=collapsed?'Seitenleiste einblenden':'Seitenleiste ausblenden';
+}
+
+function resetMarginToFormatDefault(axis){
+  const v=_formatMarginDefaults[axis]??{T:66,B:60,L:72,R:52}[axis];
+  const slId='margin'+axis+'-sl';
+  const valId='margin'+axis+'-val';
+  const el=document.getElementById(slId); if(!el) return;
+  el.value=v; syncPct(el);
+  const lbl=document.getElementById(valId); if(lbl) lbl.textContent=v;
+  // Reset counts as auto (format default) — do not mark as manual override
+  _marginOverride=false;
+  schedRender();
+}
+
 function toggleLayoutExpander(){
   const extra = document.getElementById('layout-extra');
   const icon  = document.getElementById('layout-expander-icon');
@@ -5159,6 +5289,13 @@ async function pushToFirebase(){
         _settingsObj.ori=currentOrientation;
         _settingsObj.customW=PAGE_W;
         _settingsObj.customH=PAGE_H;
+      }
+      // Only sync margins when the user manually adjusted them
+      if(_marginOverride){
+        _settingsObj.mT=document.getElementById('marginT-sl')?.value||'66';
+        _settingsObj.mB=document.getElementById('marginB-sl')?.value||'60';
+        _settingsObj.mL=document.getElementById('marginL-sl')?.value||'72';
+        _settingsObj.mR=document.getElementById('marginR-sl')?.value||'52';
       }
       payload.settings = JSON.stringify(_settingsObj); // lin, pgc etc. are local-only
     }

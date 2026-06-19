@@ -1374,11 +1374,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <button class="slider-rst" onclick="resetSlider('sw-sl')" title="Zurücksetzen">↺</button>
       </div>
     </div>
-    <button class="layout-expander" id="layout-expander" onclick="toggleLayoutExpander()">
-      <span>Mehr Layout-Optionen</span>
-      <i data-lucide="chevron-down" id="layout-expander-icon" style="width:12px;height:12px;transition:transform .2s"></i>
-    </button>
-    <div id="layout-extra" style="display:none;flex-direction:column;gap:0">
+    <div id="layout-extra" style="display:flex;flex-direction:column;gap:0">
       <div class="srow">
         <label>Größe <span id="fs-val">52</span>px</label>
         <div class="srow-track">
@@ -1387,7 +1383,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         </div>
       </div>
       <div class="srow">
-        <label>Jitter <span id="jit-val">1.0</span></label>
+        <label>Unordentlich <span id="jit-val">1.0</span></label>
         <div class="srow-track">
           <input type="range" id="jit-sl" min="0" max="3" step=".1" value="1" oninput="onJitChange(this.value)">
           <button class="slider-rst" onclick="resetSlider('jit-sl')" title="Zurücksetzen">↺</button>
@@ -1418,7 +1414,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   </div>
   <div class="pdivider"></div>
   <div class="psec" id="psec-margins">
-    <div class="plabel">Seitenränder</div>
+    <div class="plabel" onclick="(function(){var c=document.getElementById('margins-body');var i=document.getElementById('margins-chevron');if(!c)return;var open=c.style.display!=='none';c.style.display=open?'none':'flex';i.style.transform=open?'':'rotate(180deg)';})()" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+      <span>Seitenränder</span>
+      <i data-lucide="chevron-down" id="margins-chevron" style="width:11px;height:11px;transition:transform .2s;transform:rotate(180deg)"></i>
+    </div>
+    <div id="margins-body" style="display:none;flex-direction:column;gap:0">
     <div class="srow">
       <label>Oben <span id="marginT-val">66</span>px</label>
       <div class="srow-track">
@@ -1447,6 +1447,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <button class="slider-rst" onclick="resetMarginToFormatDefault('R')" title="Auf Format-Standard zurücksetzen">↺</button>
       </div>
     </div>
+    </div><!-- /margins-body -->
   </div>
   <div class="pdivider"></div>
   <div class="psec">
@@ -1641,6 +1642,17 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <div style="height:1px;background:var(--ui-border)"></div>
 
     <div class="smodal-sec">
+      <div class="smodal-sec-title">Eingabe</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="finger-toggle" onchange="setFingerDraw(this.checked)" style="width:16px;height:16px;accent-color:var(--accent)">
+        <span>Zeichnen mit dem Finger aktivieren</span>
+      </label>
+      <div class="smodal-note">Wenn ein Apple Pencil erkannt wird, werden Fingereingaben auf Zeichenflächen standardmäßig ignoriert. Diese Option erlaubt beides gleichzeitig.</div>
+    </div>
+
+    <div style="height:1px;background:var(--ui-border)"></div>
+
+    <div class="smodal-sec">
       <div class="smodal-sec-title">Unbekannte Zeichen beim Rendern</div>
       <div style="display:flex;flex-direction:column">
         <label class="smodal-radio-row">
@@ -1767,6 +1779,24 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <div class="umodal-btns">
       <button class="btn btn-o" style="flex:1" onclick="handleUnknown('ignore')">Ignorieren</button>
       <button class="btn btn-p" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px" onclick="handleUnknown('scan')"><i data-lucide="pen-line" style="width:12px;height:12px"></i>Einscannen</button>
+    </div>
+  </div>
+</div>
+
+<!-- FINGER-DRAW MODAL -->
+<div id="finger-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+  <div style="background:var(--sidebar-bg,#fff);border-radius:14px;padding:28px 24px;max-width:340px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:16px">
+    <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+      <i data-lucide="hand" style="width:18px;height:18px;color:var(--accent)"></i>
+      Zeichnen mit dem Finger
+    </div>
+    <div style="font-size:13px;color:var(--fg2,#666);line-height:1.5">
+      Du nutzt ein Apple Pencil. Soll das Zeichnen mit dem Finger auf Zeichenflächen <strong>zusätzlich</strong> aktiviert werden?<br><br>
+      Diese Einstellung kann jederzeit unter <em>Einstellungen → Eingabe</em> geändert werden.
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-o" onclick="setFingerDraw(false)" style="font-size:13px">Nein, nur Pencil</button>
+      <button class="btn" onclick="setFingerDraw(true)" style="font-size:13px">Ja, aktivieren</button>
     </div>
   </div>
 </div>
@@ -2089,9 +2119,44 @@ const _dirty = {
 let _defaultFormatSaved = false; // becomes true once user clicks "Als Standard festlegen"
 
 // ── APPLE PENCIL DETECTION ──────────────────────────────────
-// Once a pen is detected, finger-touches on draw surfaces are ignored
+// Once a pen is detected, finger-touches on draw surfaces are ignored unless _allowFinger is true.
 let _hasPen = false;
-document.addEventListener('pointerdown', e => { if(e.pointerType === 'pen') _hasPen = true; }, { capture: true, passive: true });
+let _allowFinger = localStorage.getItem('mw-allow-finger') === '1';
+let _fingerPrefSet = localStorage.getItem('mw-finger-pref-set') === '1';
+
+function _maybeTriggerFingerModal(){
+  if(_fingerPrefSet) return;
+  _fingerPrefSet = true;
+  localStorage.setItem('mw-finger-pref-set','1');
+  const m = document.getElementById('finger-modal');
+  if(m){ m.style.display='flex'; if(window.lucide) lucide.createIcons(); }
+}
+
+function setFingerDraw(allow){
+  _allowFinger = allow;
+  localStorage.setItem('mw-allow-finger', allow ? '1' : '0');
+  const m = document.getElementById('finger-modal');
+  if(m) m.style.display='none';
+  _updateFingerToggleUI();
+  showToast(allow ? 'Finger-Zeichnen aktiviert ✓' : 'Nur Apple Pencil aktiv ✓');
+}
+
+function _updateFingerToggleUI(){
+  const t = document.getElementById('finger-toggle');
+  if(t) t.checked = _allowFinger;
+}
+
+document.addEventListener('pointerdown', e => {
+  if(e.pointerType === 'pen'){
+    if(!_hasPen){ _hasPen = true; }
+    return;
+  }
+  // When a finger touches a drawing surface and a pen was already detected, ask once
+  if(_hasPen && e.pointerType === 'touch' && !_allowFinger){
+    const onCanvas = e.target && e.target.closest && e.target.closest('canvas');
+    if(onCanvas) _maybeTriggerFingerModal();
+  }
+}, { capture: true, passive: true });
 
 // ═══════════════════════════════════════════════════════════
 // RNG
@@ -2342,6 +2407,7 @@ class Recorder {
            p:e.pressure>0?e.pressure:0.5};
   }
   _dn(e){
+    if(_hasPen && e.pointerType==='touch' && !_allowFinger) return;
     e.preventDefault();this.dn=true;
     const pw=parseFloat(document.getElementById('ps').value);
     this.ctx.strokeStyle='#1C1917';this.ctx.lineWidth=pw;
@@ -2351,7 +2417,9 @@ class Recorder {
     document.getElementById('rec-hint').classList.add('gone');
   }
   _mv(e){
-    if(!this.dn)return;e.preventDefault();
+    if(!this.dn)return;
+    if(_hasPen && e.pointerType==='touch' && !_allowFinger) return;
+    e.preventDefault();
     const p=this._pos(e);this.cur.push(p);
     const n=this.cur.length;
     if(n>=2){
@@ -3934,6 +4002,7 @@ function openSettings(){
   document.getElementById('settings-modal').classList.add('open');
   setThemeQuiet(localStorage.getItem('mw-theme')||'auto');
   updateAccountSection();
+  _updateFingerToggleUI();
   if(window.lucide) lucide.createIcons();
 }
 function closeSettings(){document.getElementById('settings-modal').classList.remove('open');}
@@ -4063,7 +4132,8 @@ async function doImport(){
   store.fromJSON(JSON.stringify(existingObj));
 
   await persistProfile();
-  buildGrid(); refreshChar(); updateProg(); schedRender();
+  _reconcileCustomChars();
+  buildGrid(); buildCustomGrid(); refreshChar(); updateProg(); schedRender();
   closeImportModal();
   showToast(`${selected.length} Zeichen importiert ✓`);
 }
@@ -4363,21 +4433,40 @@ async function exportGoodNotesInk(){
     const pgB=parseInt(pgHex.slice(4,6),16)/255;
     page.drawRectangle({x:0,y:0,width:PT_W,height:PT_H,color:rgb(pgR,pgG,pgB)});
     if(currentLin!=='blank'){
-      // Match the pt-based spacing used in drawLin for accuracy
-      const spPx=currentLin==='gn-lined'?ptToPx(17):currentLin==='gn-notepad'?ptToPx(14):ptToPx(36);
-      const sp=spPx*SY, lc=rgb(0.58,0.64,0.81);
-      const lineOp=currentLin==='gn-lined'||currentLin==='gn-notepad'?0.42:0.35;
-      for(let y=sp;y<PT_H;y+=sp)
-        page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:lineOp});
-      if(currentLin==='grid'){
-        const spx=ptToPx(30)*SX;
-        for(let x=spx;x<PT_W;x+=spx)
-          page.drawLine({start:{x,y:0},end:{x,y:PT_H},thickness:0.5,color:lc,opacity:0.35});
-      }
-      // Red margin line for all ruled/gn types
-      if(currentLin!=='dot'){
+      // Mirror drawLin() exactly — each branch uses its own pitch and red-stripe rule.
+      const lc=rgb(0.58,0.64,0.81);
+      const redLine=()=>{
         const mx=ptToPx(46)*SX;
         page.drawLine({start:{x:mx,y:0},end:{x:mx,y:PT_H},thickness:0.8,color:rgb(0.82,0.37,0.33),opacity:0.26});
+      };
+      if(currentLin==='gn-notepad'){
+        const sp=ptToPx(14)*SY;
+        for(let y=sp;y<PT_H;y+=sp)
+          page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:0.45});
+        redLine();
+      } else if(currentLin==='gn-lined'){
+        const sp=ptToPx(17)*SY;
+        for(let y=sp;y<PT_H;y+=sp)
+          page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:0.42});
+        redLine();
+      } else if(currentLin==='ruled'){
+        const sp=ptToPx(36)*SY;
+        for(let y=sp;y<PT_H;y+=sp)
+          page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:0.35});
+        redLine();
+      } else if(currentLin==='grid'){
+        // Same 17pt pitch as drawLin — NO red margin for grid
+        const sp=ptToPx(17)*SY;
+        const spx=ptToPx(17)*SX;
+        for(let y=sp;y<PT_H;y+=sp)
+          page.drawLine({start:{x:0,y:PT_H-y},end:{x:PT_W,y:PT_H-y},thickness:0.5,color:lc,opacity:0.35});
+        for(let x=spx;x<PT_W;x+=spx)
+          page.drawLine({start:{x,y:0},end:{x,y:PT_H},thickness:0.5,color:lc,opacity:0.35});
+      } else if(currentLin==='dot'){
+        // Approximate dots as tiny filled circles; pdf-lib supports drawEllipse
+        const sx=ptToPx(30)*SX, sy=ptToPx(30)*SY;
+        for(let y=sy;y<PT_H;y+=sy) for(let x=sx;x<PT_W;x+=sx)
+          page.drawEllipse({x,y:PT_H-y,xScale:1.0,yScale:1.0,color:lc,opacity:0.36});
       }
     }
     pdfPages.push(page);
@@ -4564,8 +4653,7 @@ function exRefreshChar(){
 
   newCv.addEventListener('pointerdown',e=>{
     e.preventDefault();
-    // Ignore accidental finger touch once an Apple Pencil / stylus has been detected
-    if(_hasPen && e.pointerType === 'touch') return;
+    if(_hasPen && e.pointerType === 'touch' && !_allowFinger) return;
     exCancelCd();drawing=true;
     const p=pos(e); cur=[p];
     const pw=parseFloat(document.getElementById('ps').value)||2.5;
@@ -4577,7 +4665,7 @@ function exRefreshChar(){
 
   newCv.addEventListener('pointermove',e=>{
     if(!drawing)return; e.preventDefault();
-    if(_hasPen && e.pointerType === 'touch') return;
+    if(_hasPen && e.pointerType === 'touch' && !_allowFinger) return;
     const p=pos(e); cur.push(p);
     const n=cur.length;
     if(n>=2){
@@ -4674,7 +4762,19 @@ function exSkip(){
 
 function exBack(){
   exCancelCd();exStrokes=[];
-  if(exCharIdx>0) exCharIdx--;
+  if(exCharIdx>0){
+    exCharIdx--;
+    const ch=CHARS[exCharIdx];
+    // Delete the last saved variant so the user can re-draw this char
+    if(store.has(ch)){
+      const variants=store.get(ch);
+      if(variants&&variants.length>0){
+        store.del(ch,variants.length-1);
+        persistProfile();
+        updateProg();
+      }
+    }
+  }
   exRefreshChar();exUpdateProgress();
 }
 

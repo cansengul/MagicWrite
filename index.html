@@ -1784,26 +1784,26 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 </div>
 
 <!-- FINGER-DRAW MODAL -->
-<div id="finger-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
-  <div style="background:var(--sidebar-bg,#fff);border-radius:14px;padding:28px 24px;max-width:340px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:16px">
-    <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
+<div id="finger-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)">
+  <div style="background:var(--paper-warm);border:0.5px solid var(--ui-border);border-radius:14px;padding:28px 24px;max-width:340px;width:90%;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:16px;animation:slideUp .22s ease">
+    <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;color:var(--ink)">
       <i data-lucide="hand" style="width:18px;height:18px;color:var(--accent)"></i>
       Zeichnen mit dem Finger
     </div>
-    <div style="font-size:13px;color:var(--fg2,#666);line-height:1.5">
-      Du nutzt ein Apple Pencil. Soll das Zeichnen mit dem Finger auf Zeichenflächen <strong>zusätzlich</strong> aktiviert werden?<br><br>
+    <div style="font-size:13px;color:var(--ink-soft);line-height:1.5">
+      Soll das Zeichnen mit dem Finger auf Zeichenflächen aktiviert werden?<br><br>
       Diese Einstellung kann jederzeit unter <em>Einstellungen → Eingabe</em> geändert werden.
     </div>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-o" onclick="setFingerDraw(false)" style="font-size:13px">Nein, nur Pencil</button>
-      <button class="btn" onclick="setFingerDraw(true)" style="font-size:13px">Ja, aktivieren</button>
+      <button class="btn btn-p" onclick="setFingerDraw(true)" style="font-size:13px">Ja, aktivieren</button>
     </div>
   </div>
 </div>
 
 <!-- TUTORIAL MODAL -->
-<div id="tutorial-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
-  <div style="background:var(--sidebar-bg,#fff);border-radius:18px;padding:32px 28px 24px;max-width:420px;width:92%;box-shadow:0 12px 48px rgba(0,0,0,.28);display:flex;flex-direction:column;gap:20px;position:relative">
+<div id="tutorial-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center;backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)">
+  <div style="background:var(--paper-warm);border:0.5px solid var(--ui-border);border-radius:18px;padding:32px 28px 24px;max-width:420px;width:92%;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;gap:20px;position:relative;animation:slideUp .22s ease">
     <!-- Step indicators -->
     <div style="display:flex;gap:6px;justify-content:center" id="tut-dots"></div>
     <!-- Content area -->
@@ -2165,12 +2165,6 @@ function _updateFingerToggleUI(){
 document.addEventListener('pointerdown', e => {
   if(e.pointerType === 'pen'){
     if(!_hasPen){ _hasPen = true; }
-    return;
-  }
-  // When a finger touches a drawing surface and a pen was already detected, ask once
-  if(_hasPen && e.pointerType === 'touch' && !_allowFinger){
-    const onCanvas = e.target && e.target.closest && e.target.closest('canvas');
-    if(onCanvas) _maybeTriggerFingerModal();
   }
 }, { capture: true, passive: true });
 
@@ -2281,6 +2275,26 @@ const N = {
       return strokes.map(s=>s.map(p=>({
         x:(p.x-x0)*scX+oxX,
         y:p.y*sy,
+        p:p.p??0.5
+      })));
+    }
+
+    // ── Mid-height symbols: center between x-height and baseline ──
+    // Characters like -, –, —, +, =, × etc. should float at mid-height,
+    // not collapse to the baseline as the standard bbox normalization would do
+    // for nearly-horizontal (very small rh) strokes.
+    const isMidLine = ch && '-–—+×÷=~·•'.includes(ch);
+    if(isMidLine){
+      const midH = (this.BL + this.XH) / 2; // midpoint between x-height and baseline ≈ 88
+      const maxMidH = this.BL - this.XH;     // 40 N-units height cap
+      const scM = Math.min(maxMidH / Math.max(rh, 8), (this.W * 0.80) / (rw || 1));
+      const swM = (rw || 1) * scM;
+      const shM = Math.max(rh, 8) * scM;
+      const oxM = (this.W - swM) / 2;
+      const oyM = midH - shM / 2;
+      return strokes.map(s=>s.map(p=>({
+        x:(p.x-x0)*scM+oxM,
+        y:(p.y-y0)*scM+oyM,
         p:p.p??0.5
       })));
     }
@@ -2439,7 +2453,7 @@ class Recorder {
            p:e.pressure>0?e.pressure:0.5};
   }
   _dn(e){
-    if(_hasPen && e.pointerType==='touch' && !_allowFinger) return;
+    if(e.pointerType==='touch' && !_allowFinger && (_hasPen || _fingerPrefSet)) return;
     e.preventDefault();this.dn=true;
     const pw=parseFloat(document.getElementById('ps').value);
     this.ctx.strokeStyle='#1C1917';this.ctx.lineWidth=pw;
@@ -2450,7 +2464,7 @@ class Recorder {
   }
   _mv(e){
     if(!this.dn)return;
-    if(_hasPen && e.pointerType==='touch' && !_allowFinger) return;
+    if(e.pointerType==='touch' && !_allowFinger && (_hasPen || _fingerPrefSet)) return;
     e.preventDefault();
     const p=this._pos(e);this.cur.push(p);
     const n=this.cur.length;
@@ -4081,8 +4095,8 @@ function _renderTutStep(){
 
   content.innerHTML = `
     <div style="font-size:32px;text-align:center">${s.icon}</div>
-    <div style="font-weight:700;font-size:16px;text-align:center">${s.title}</div>
-    <div style="font-size:13px;color:var(--ink-soft,#555);line-height:1.65;text-align:center">${s.text}</div>
+    <div style="font-weight:700;font-size:16px;text-align:center;color:var(--ink)">${s.title}</div>
+    <div style="font-size:13px;color:var(--ink-soft);line-height:1.65;text-align:center">${s.text}</div>
   `;
 
   if(dots){
@@ -4777,7 +4791,7 @@ function exRefreshChar(){
 
   newCv.addEventListener('pointerdown',e=>{
     e.preventDefault();
-    if(_hasPen && e.pointerType === 'touch' && !_allowFinger) return;
+    if(e.pointerType === 'touch' && !_allowFinger && (_hasPen || _fingerPrefSet)) return;
     exCancelCd();drawing=true;
     const p=pos(e); cur=[p];
     const pw=parseFloat(document.getElementById('ps').value)||2.5;
@@ -4789,7 +4803,7 @@ function exRefreshChar(){
 
   newCv.addEventListener('pointermove',e=>{
     if(!drawing)return; e.preventDefault();
-    if(_hasPen && e.pointerType === 'touch' && !_allowFinger) return;
+    if(e.pointerType === 'touch' && !_allowFinger && (_hasPen || _fingerPrefSet)) return;
     const p=pos(e); cur.push(p);
     const n=cur.length;
     if(n>=2){

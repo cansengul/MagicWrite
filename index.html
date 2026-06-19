@@ -1394,16 +1394,16 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         </div>
       </div>
       <div class="srow">
-        <label>Buchstabenabstand <span id="ls-val">1.0</span>×</label>
+        <label>Buchstabenabstand <span id="ls-val">0.70</span>×</label>
         <div class="srow-track">
-          <input type="range" id="ls-sl" min=".7" max="2.0" step=".05" value="1.0" oninput="document.getElementById('ls-val').textContent=parseFloat(this.value).toFixed(2);schedRender()">
+          <input type="range" id="ls-sl" min=".7" max="2.0" step=".05" value="0.70" oninput="document.getElementById('ls-val').textContent=parseFloat(this.value).toFixed(2);schedRender()">
           <button class="slider-rst" onclick="resetSlider('ls-sl')" title="Zurücksetzen">↺</button>
         </div>
       </div>
       <div class="srow">
-        <label>Wortabstand <span id="ws-val">1.0</span>×</label>
+        <label>Wortabstand <span id="ws-val">2.0</span>×</label>
         <div class="srow-track">
-          <input type="range" id="ws-sl" min=".5" max="2.5" step=".1" value="1.0" oninput="document.getElementById('ws-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
+          <input type="range" id="ws-sl" min=".5" max="2.5" step=".1" value="2.0" oninput="document.getElementById('ws-val').textContent=parseFloat(this.value).toFixed(1);schedRender()">
           <button class="slider-rst" onclick="resetSlider('ws-sl')" title="Zurücksetzen">↺</button>
         </div>
       </div>
@@ -1699,11 +1699,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
             <i data-lucide="user-x" style="width:13px;height:13px"></i>Konto löschen
           </button>
         </div>
-        <!-- Glyph limit -->
-        <div>
+        <!-- Storage meter -->
+        <div id="acct-storage-section">
           <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft);margin-bottom:2px">
-            <span>Gespeicherte Zeichen</span>
-            <span><b id="acct-glyph-count">0</b> / <span id="acct-glyph-max">300</span></span>
+            <span>Speicherplatz Schriftdatenbank</span>
+            <span><b id="acct-storage-pct">0</b>% · <span id="acct-storage-used">0</span>&thinsp;KB&thinsp;/&thinsp;3072&thinsp;KB</span>
           </div>
           <div class="limit-bar-wrap"><div id="acct-limit-bar" class="limit-bar-fill" style="width:0%"></div></div>
         </div>
@@ -1889,11 +1889,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   </div>
 </div>
 
-<!-- CHARACTER LIMIT MODAL -->
+<!-- STORAGE LIMIT MODAL -->
 <div id="limit-modal">
   <div class="reauth-card">
-    <div class="reauth-title">⚠️ Zeichenlimit erreicht</div>
-    <div class="reauth-desc">Du hast das Maximum von <b id="limit-modal-max">300</b> gespeicherten Zeichen erreicht. Exportiere deine Zeichen als Sicherung oder lösche einzelne Zeichen, um neue aufnehmen zu können.</div>
+    <div class="reauth-title">⚠️ Speicherplatz voll</div>
+    <div class="reauth-desc">Der Cloud-Speicher für deine Schriftdatenbank ist voll (1&thinsp;MB). Exportiere deine Zeichen als Sicherung oder lösche einzelne Varianten, um Platz zu schaffen.</div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-o" style="flex:1" onclick="document.getElementById('limit-modal').classList.remove('open')">Schließen</button>
       <button class="btn" style="flex:1;background:var(--accent);color:#fff;font-weight:600" onclick="document.getElementById('limit-modal').classList.remove('open');exportGlyphs()"><i data-lucide="download" style="width:12px;height:12px"></i> Exportieren</button>
@@ -2066,7 +2066,14 @@ const FIREBASE_CONFIG = {
 };
 
 // ── GLYPH LIMIT ─────────────────────────────────────────────
-const MAX_GLYPHS = 300;
+// Storage-based limit — matches the Firebase Realtime DB rule for the glyphs field.
+// 100 characters × 3 variants each at ~7.9 KB/char ≈ 790 KB; 3 MB gives headroom for more.
+const MAX_GLYPH_BYTES = 3145728; // 3 MB
+
+// localStorage key: caches the last-seen _updatedAt timestamp for the glyphs field.
+// On page load we compare this to the tiny Firebase _updatedAt before deciding whether
+// to download the full (potentially 3 MB) glyphs payload — saves bandwidth.
+const _GLYPH_TS_KEY = 'mw-glyph-ts';
 
 // ── FIREBASE DIRTY FLAGS (only sync what changed) ───────────
 // Initialized true so first push after login sends everything
@@ -2159,7 +2166,8 @@ const N = {
     const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
     const sw=(rw||1)*sc;
     const ox=(this.W-sw)/2;
-    const isUpper = ch && ((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
+    // Digits are treated like uppercase: cap their height to BL-CAP so they stay within the ruling lines.
+    const isUpper = ch && ((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch)||(ch>='0'&&ch<='9'));
     const maxH = isUpper ? (this.BL-this.CAP) : (this.H*0.80);
     const scY = Math.min(maxH/(rh||1), (this.H*0.80)/(rh||1));
     const scFinal = Math.min(scY, (this.W*0.90)/(rw||1));
@@ -2360,7 +2368,7 @@ class RenderEngine {
     this.wordMap=[];
     this.cfg={
       fontSize:52,lineHeight:1.6,
-      letterSpacing:1.0,wordSpacing:1.0,
+      letterSpacing:0.70,wordSpacing:2.0,
       marginL:72,marginT:66,marginR:52,marginB:60,
       jitter:1.0,inkColor:'#1C1917',conn:'none',strokeWidth:1.0
     };
@@ -2374,10 +2382,14 @@ class RenderEngine {
     if(!vs) return this.cfg.fontSize*0.65*zs;
     const avg=vs.reduce((s,v)=>s+v.aw,0)/vs.length;
     let adv=avg*this.sc*this.cfg.letterSpacing*zs;
-    // Ensure narrow letters like i, j, l, t get at least a minimum advance
-    // so they don't slide into the next character
-    const minAdv=this.cfg.fontSize*0.28*this.cfg.letterSpacing;
-    if('ijl!|'.includes(ch)) adv=Math.max(adv,minAdv);
+    // Floor: advance must cover the glyph's visual width regardless of letterSpacing.
+    // (avg - 16) is the raw x-span in N space (16 is the padding added by advance()).
+    // Without this, tight letterSpacing makes wide letters like m/n overlap the next char.
+    const visualW=(avg-16)*this.sc*zs;
+    if(adv<visualW) adv=visualW;
+    // Extra floor for narrow centered letters (i, l…): their stored aw≈16 after centering,
+    // giving a visual width of 0. Use a fixed minimum that does NOT scale with letterSpacing.
+    if('ijl!|'.includes(ch)) adv=Math.max(adv,this.cfg.fontSize*0.32);
     return adv;
   }
 
@@ -3409,9 +3421,8 @@ function saveStroke(){
   if(!sd.length){showToast('Zuerst ein Zeichen zeichnen!');return;}
   const ch=curCustomIdx>=0?customChars[curCustomIdx]:CHARS[charIdx];
   if(!ch){showToast('Bitte zuerst ein Zeichen auswählen');return;}
-  // Enforce glyph limit for characters not yet in the store
-  if(!store.has(ch) && store.count() >= MAX_GLYPHS){
-    document.getElementById('limit-modal-max').textContent = MAX_GLYPHS;
+  // Enforce storage limit (only when logged in — local storage is unlimited)
+  if(fbUser && !store.has(ch) && store.toJSON().length >= MAX_GLYPH_BYTES * 0.97){
     document.getElementById('limit-modal').classList.add('open');
     if(window.lucide) lucide.createIcons();
     return;
@@ -3419,8 +3430,10 @@ function saveStroke(){
   store.add(ch,sd);
   recorder.clear();
   if(curCustomIdx>=0){refreshCustomChar();buildCustomGrid();}else{refreshChar();}
-  persistProfile();
+  persistProfile(); // saves locally immediately; cloud sync follows below
   schedRender();
+  // Schedule a debounced cloud sync (30 s) so rapid sequential scans send only one request
+  if(fbUser && fbDb){ clearTimeout(_glyphSyncTimer); _glyphSyncTimer=setTimeout(()=>{ if(_dirty.glyphs) scheduleSync(); },30000); }
   if(scanQueue.length>0){
     advanceScanQueue();
   } else {
@@ -3652,7 +3665,8 @@ async function persistProfile(){
   const tx=db.transaction('profiles','readwrite');
   tx.objectStore('profiles').put({name:'default',g:store.toJSON(),ts:Date.now()});
   _dirty.glyphs = true;
-  scheduleSync();
+  // Do NOT scheduleSync() here — glyphs are saved locally on every scan.
+  // Cloud sync happens once when the scan modal is closed (bandwidth-friendly).
   updateGlyphLimitBar();
 }
 
@@ -3795,8 +3809,8 @@ function loadSettings(){
 // LAYOUT RESET
 // ═══════════════════════════════════════════════════════════
 const LAYOUT_DEFAULTS={
-  'ls-sl': {value:'1.0',  label:'ls-val',  fmt:v=>parseFloat(v).toFixed(2)},
-  'ws-sl': {value:'1.0',  label:'ws-val',  fmt:v=>parseFloat(v).toFixed(1)},
+  'ls-sl': {value:'0.70', label:'ls-val',  fmt:v=>parseFloat(v).toFixed(2)},
+  'ws-sl': {value:'2.0',  label:'ws-val',  fmt:v=>parseFloat(v).toFixed(1)},
   'lh-sl': {value:'1.6',  label:'lh-val',  fmt:v=>parseFloat(v).toFixed(1)},
   'sw-sl': {value:'1.0',  label:'sw-val',  fmt:v=>parseFloat(v).toFixed(1)},
   'fs-sl': {value:'52',   label:'fs-val',  fmt:v=>v},
@@ -4432,6 +4446,8 @@ function openExpress(){
 function closeExpress(){
   exActive=false;exCancelCd();
   document.getElementById('ex-modal').classList.remove('open');
+  // Flush glyphs to cloud once after the scan session ends
+  if(_dirty.glyphs) scheduleSync();
 }
 
 function exBuildDots(){
@@ -4556,9 +4572,8 @@ function exCommit(){
   exCancelCd();
   if(exStrokes.length>0){
     const ch = CHARS[exCharIdx];
-    // Enforce glyph limit for characters not yet in the store
-    if(!store.has(ch) && store.count() >= MAX_GLYPHS){
-      document.getElementById('limit-modal-max').textContent = MAX_GLYPHS;
+    // Enforce storage limit (only when logged in — local storage is unlimited)
+    if(fbUser && !store.has(ch) && store.toJSON().length >= MAX_GLYPH_BYTES * 0.97){
       document.getElementById('limit-modal').classList.add('open');
       if(window.lucide) lucide.createIcons();
       exAdvance(); // skip this char instead of blocking the scan
@@ -4681,6 +4696,7 @@ const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36)
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let fbListener = null;
 let syncTimer = null;
+let _glyphSyncTimer = null; // separate debounce for glyph-only cloud syncs
 let fbReady = false;
 
 // ── INIT ──────────────────────────────────────────────────
@@ -4931,12 +4947,56 @@ async function loadFromFirebase(){
   }
   setSyncStatus('syncing');
   const timeoutMs = 12000;
+  const uid = fbUser.uid;
   try{
-    const snap = await Promise.race([
-      fbDb.ref(`users/${fbUser.uid}`).once('value'),
+    // ── SMART LOAD: check _updatedAt before pulling the heavy glyphs payload ──
+    // Step 1: fetch only the tiny timestamp field (≈ 30 bytes)
+    const cachedTs = parseInt(localStorage.getItem(_GLYPH_TS_KEY) || '0');
+    const tsSnap = await Promise.race([
+      fbDb.ref(`users/${uid}/_updatedAt`).once('value'),
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
-    const data = snap.val();
+    const cloudTs = tsSnap.val(); // null if no cloud data yet
+
+    let data;
+    let glyphsWereSkipped = false;
+
+    if(cloudTs && cachedTs && cloudTs === cachedTs && store.count() > 0){
+      // Timestamp matches → glyphs are unchanged since last download.
+      // Fetch only the lightweight metadata fields (skip the big glyphs string).
+      const [sSnap, pSnap, ccSnap, sessSnap] = await Promise.all([
+        fbDb.ref(`users/${uid}/settings`).once('value'),
+        fbDb.ref(`users/${uid}/preferences`).once('value'),
+        fbDb.ref(`users/${uid}/customChars`).once('value'),
+        fbDb.ref(`users/${uid}/_session`).once('value'),
+      ]);
+      data = {
+        settings:    sSnap.val(),
+        preferences: pSnap.val(),
+        customChars: ccSnap.val(),
+        _session:    sessSnap.val(),
+        _updatedAt:  cloudTs,
+        glyphs:      null   // intentionally null — local IndexedDB is up to date
+      };
+      glyphsWereSkipped = true;
+    } else {
+      // Timestamp differs or no cache → full download
+      const snap = await Promise.race([
+        fbDb.ref(`users/${uid}`).once('value'),
+        new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
+      ]);
+      data = snap.val();
+      // Cache the new timestamp so next load can skip if unchanged
+      if(data && data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
+    }
+
+    // ── Glyphs confirmed in sync → only apply metadata and done ──
+    if(glyphsWereSkipped){
+      if(data.settings || data.preferences || data.customChars)
+        applyFirebaseData(data, true);
+      setSyncStatus('synced');
+      return;
+    }
 
     // ── CASE A: Cloud entirely empty → upload everything silently
     if(!data){
@@ -5123,6 +5183,8 @@ function subscribeToFirebase(){
     }
 
     applyFirebaseData(data, false);
+    // Cache the new timestamp so the next page load skips re-downloading glyphs
+    if(data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
     setSyncStatus('synced');
     showToast('↻ Von anderem Gerät synchronisiert');
   };
@@ -5310,6 +5372,14 @@ async function pushToFirebase(){
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
     setSyncStatus('synced');
+    // After a successful glyph upload, read back the server-written _updatedAt so the
+    // NEXT page load recognises the timestamp and skips re-downloading the glyphs.
+    if(sending.glyphs){
+      try{
+        const tsSnap = await fbDb.ref(`users/${fbUser.uid}/_updatedAt`).once('value');
+        if(tsSnap.val()) localStorage.setItem(_GLYPH_TS_KEY, String(tsSnap.val()));
+      }catch(_){}
+    }
   }catch(err){
     // Restore dirty flags so next sync retries the failed fields
     Object.keys(sending).forEach(k => { if(sending[k]) _dirty[k] = true; });
@@ -5737,18 +5807,24 @@ async function resetAccount(){
 
 // ── GLYPH LIMIT BAR ─────────────────────────────────────────
 function updateGlyphLimitBar(){
-  const count = store ? store.count() : 0;
-  const pct   = Math.min(100, count / MAX_GLYPHS * 100);
-  const bar   = document.getElementById('acct-limit-bar');
-  const countEl = document.getElementById('acct-glyph-count');
-  const maxEl   = document.getElementById('acct-glyph-max');
+  // Storage meter is only shown (and meaningful) when the user is logged in
+  const section = document.getElementById('acct-storage-section');
+  if(section) section.style.display = fbUser ? 'block' : 'none';
+  if(!fbUser) return; // no limit when offline
+
+  const bytes  = store ? store.toJSON().length : 0;
+  const usedKB = Math.round(bytes / 1024);
+  const pct    = Math.min(100, Math.round(bytes / MAX_GLYPH_BYTES * 100));
+  const bar    = document.getElementById('acct-limit-bar');
+  const pctEl  = document.getElementById('acct-storage-pct');
+  const usedEl = document.getElementById('acct-storage-used');
   if(bar){
     bar.style.width = pct + '%';
     bar.classList.toggle('warn',   pct >= 75 && pct < 90);
     bar.classList.toggle('danger', pct >= 90);
   }
-  if(countEl) countEl.textContent = count;
-  if(maxEl)   maxEl.textContent   = MAX_GLYPHS;
+  if(pctEl)  pctEl.textContent  = pct;
+  if(usedEl) usedEl.textContent = usedKB;
 }
 
 // ── PASSWORD CHANGE ──────────────────────────────────────────

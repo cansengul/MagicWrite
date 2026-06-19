@@ -2198,119 +2198,52 @@ const N = {
       if(p.x>x1)x1=p.x; if(p.y>y1)y1=p.y;
     }
     const rw=x1-x0, rh=y1-y0;
+
+    // ── Proportional y-mapping ──────────────────────────────────────────────
+    // sy converts raw canvas pixels (canvas assumed 380px tall) to N-units.
+    // Guide lines on the canvas are drawn at N.CAP/XH/BL/DESC * (h/N.H) pixels,
+    // so multiplying by sy maps them back to exactly N.CAP / N.XH / N.BL / N.DESC.
+    // This means: wherever you draw on the scan canvas is exactly where the glyph
+    // renders in the line — baseline guide → baseline, descender zone → below baseline.
+    const sy=this.H/380;
+
+    // Tiny dot / very small mark: preserve drawn y-position, center x
     if(rw<14&&rh<14){
       const avgP=all.reduce((s,p)=>s+(p.p??0.5),0)/all.length;
+      const avgY=all.reduce((s,p)=>s+p.y,0)/all.length;
       return strokes.map(()=>[
-        {x:this.W/2, y:this.BL-2, p:avgP},
-        {x:this.W/2, y:this.BL-2, p:avgP}
+        {x:this.W/2, y:avgY*sy, p:avgP},
+        {x:this.W/2, y:avgY*sy, p:avgP}
       ]);
     }
-    const sy=this.H/380; // proportional canvas→N.H factor (canvas height = 380px)
 
-    // ── Custom symbols (not in CHARS) and German quote marks ──
-    // Proportional Y-mapping preserves the vertical position the user drew at:
-    // a low symbol (like „) stays near the baseline; a descender goes below BL.
-    const isCustomSymbol = ch && !CHARS.includes(ch);
-    const isQuote = ch && '„\u201C\u2019'.includes(ch);
-    if(isCustomSymbol || isQuote){
-      const scX = Math.min((this.W*0.85)/(rw||1),(this.H*0.55)/(rh||1));
-      const sw  = (rw||1)*scX;
-      const ox  = (this.W-sw)/2;
+    // Very narrow glyphs (i, l, |, :, etc.): center x to suppress drawing-noise amplification
+    if(rw<25){
       return strokes.map(s=>s.map(p=>({
-        x:(p.x-x0)*scX+ox,
-        y:p.y*sy,
-        p:p.p??0.5
+        x:this.W/2, y:p.y*sy, p:p.p??0.5
       })));
     }
 
-    // ── Small punctuation: comma, period, semicolon ──
-    // These marks are naturally tiny. Without a height cap the normalizer blows them up
-    // to fill 80 % of the full box, making them appear as large as an uppercase letter.
-    // We cap their height to the x-height zone (BL − XH = 40 N-units) and anchor at BL.
-    const isSmallPunct = ch && ',.;'.includes(ch);
-    if(isSmallPunct){
-      const maxH = this.BL - this.XH; // 40 N-units — x-height region only
-      const scP  = Math.min(maxH/(rh||1), (this.W*0.55)/(rw||1));
-      const shP  = (rh||1)*scP, swP=(rw||1)*scP;
-      const oxP  = (this.W - swP)/2;
-      // Comma/semicolon extend just below baseline; period stays at baseline.
-      const oyP  = ch==='.' ? this.BL-shP : this.BL - shP*0.3;
-      return strokes.map(s=>s.map(p=>({
-        x:(p.x-x0)*scP+oxP,
-        y:(p.y-y0)*scP+oyP,
-        p:p.p??0.5
-      })));
-    }
+    // ── X-scale per character class ─────────────────────────────────────────
+    // Y is always proportional. X is scaled so glyphs have natural widths.
+    const isUpper = ch&&((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
+    const isDigit = ch&&ch>='0'&&ch<='9';
+    const isLower = ch&&((ch>='a'&&ch<='z')||'äöüß'.includes(ch));
+    const isWide  = ch&&'mw'.includes(ch);
 
-    // ── Descender letters (g,j,p,q,y): proportional y-mapping, legacy x-scale ──
-    // Kept separate so existing stored descender glyphs continue to work.
-    if(ch && 'gjpqy'.includes(ch)){
-      const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
-      const sw=(rw||1)*sc;
-      const ox=(this.W-sw)/2;
-      return strokes.map(s=>s.map(p=>({
-        x:(p.x-x0)*sc+ox,
-        y:p.y*sy,
-        p:p.p??0.5
-      })));
-    }
+    let xFrac;
+    if(isUpper||isDigit) xFrac=0.85;
+    else if(isWide)      xFrac=0.72;
+    else if(isLower)     xFrac=0.60;
+    else                 xFrac=0.72; // punctuation, symbols, custom chars
 
-    // ── Non-descender lowercase (a-z, äöü, except g j p q y) ──
-    // Proportional y-mapping: strokes drawn at the guide lines land at the correct
-    // normalized positions (x-height guide → N.XH=68, baseline → N.BL=108, cap → N.CAP=22).
-    // The x-coordinates are pre-scaled by the zone factor so that rendering with zs=1.0
-    // yields the correct glyph width and advance automatically.
-    const isLower = ch && ((ch>='a'&&ch<='z')||'äöü'.includes(ch));
-    if(isLower){
-      const zsx=_getLowerXScale(ch);
-      // Very narrow glyphs (e.g. 'i', 'l'): x-variation is drawing noise —
-      // centering avoids the massive x-amplification that causes crooked results.
-      if(rw < 25){
-        const cx=this.W/2;
-        return strokes.map(s=>s.map(p=>({x:cx,y:p.y*sy,p:p.p??0.5})));
-      }
-      const scX=(this.W*0.90*zsx)/(rw||1);
-      const swX=(rw||1)*scX;
-      const oxX=(this.W-swX)/2;
-      return strokes.map(s=>s.map(p=>({
-        x:(p.x-x0)*scX+oxX,
-        y:p.y*sy,
-        p:p.p??0.5
-      })));
-    }
-
-    // ── Mid-height symbols: center between x-height and baseline ──
-    // Characters like -, –, —, +, =, × etc. should float at mid-height,
-    // not collapse to the baseline as the standard bbox normalization would do
-    // for nearly-horizontal (very small rh) strokes.
-    const isMidLine = ch && '-–—+×÷=~·•'.includes(ch);
-    if(isMidLine){
-      const midH = (this.BL + this.XH) / 2; // midpoint between x-height and baseline ≈ 88
-      const maxMidH = this.BL - this.XH;     // 40 N-units height cap
-      const scM = Math.min(maxMidH / Math.max(rh, 8), (this.W * 0.80) / (rw || 1));
-      const swM = (rw || 1) * scM;
-      const shM = Math.max(rh, 8) * scM;
-      const oxM = (this.W - swM) / 2;
-      const oyM = midH - shM / 2;
-      return strokes.map(s=>s.map(p=>({
-        x:(p.x-x0)*scM+oxM,
-        y:(p.y-y0)*scM+oyM,
-        p:p.p??0.5
-      })));
-    }
-
-    // ── Standard bounding-box normalization for uppercase, digits, and custom/special symbols ──
-    // All chars reaching this path are capped to BL-CAP (cap-to-baseline zone)
-    // so they always render within the ruling lines.
-    const maxH = this.BL - this.CAP; // 86 N-units — cap-to-baseline zone
-    const scFinal = Math.min(maxH/(rh||1), (this.W*0.90)/(rw||1));
-    const sw=(rw||1)*scFinal;
+    const scX=(this.W*xFrac)/rw;
+    const sw=rw*scX;
     const ox=(this.W-sw)/2;
-    const sh=(rh||1)*scFinal;
-    const oy=this.BL-sh;
+
     return strokes.map(s=>s.map(p=>({
-      x:(p.x-x0)*scFinal+ox,
-      y:(p.y-y0)*scFinal+oy,
+      x:(p.x-x0)*scX+ox,
+      y:p.y*sy,  // proportional: scan position = render position
       p:p.p??0.5
     })));
   },
@@ -2329,16 +2262,9 @@ const N = {
 // scaling into the x-coordinates, so rendering uses zs=1.0.
 // Descenders (gjpqy) keep their old proportional path and zs.
 // ═══════════════════════════════════════════════════════════
-function getZoneScale(ch){
-  if((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch)) return 1.0;
-  if(ch>='0'&&ch<='9') return 0.92;
-  if('gjpqy'.includes(ch)) return 0.78; // descenders: unchanged
-  if('bdfhiklt'.includes(ch)||ch==='ß') return 1.0; // ascenders: normalized proportionally
-  if('äöü'.includes(ch)) return 1.0;    // umlauts: normalized proportionally
-  if(ch>='a'&&ch<='z') return 1.0;      // regular lowercase: normalized proportionally
-  if('-–—+×÷=~·•'.includes(ch)) return 1.0; // mid-line symbols: no compression
-  return 0.80;
-}
+// All characters now use proportional y-normalization (scan position = render position),
+// so no per-character scale adjustment is needed. Always return 1.0.
+function getZoneScale(ch){ return 1.0; }
 
 // x-scale factor used inside N.normalize() for non-descender lowercase letters.
 // This makes the normalized x-coordinates already carry the zone width so that
@@ -2677,29 +2603,8 @@ class RenderEngine {
     const pivotY=baseY;
 
     ctx.save();
-    // Clip at the ruling cap line for uppercase, digits, and custom/special symbols
-    // so all non-lowercase glyphs stay within the line zone.
-    // Use this.sc (not zs-adjusted) so the clip aligns with the actual ruling guide.
-    const isUpper=ch&&((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
-    const isDigit=ch&&(ch>='0'&&ch<='9');
-    const isLower=ch&&((ch>='a'&&ch<='z')||'äöüß'.includes(ch));
-    if(isUpper||isDigit||(!isLower&&ch)){
-      const capLineY=baseY-(N.BL-N.CAP)*this.sc;
-      ctx.beginPath();
-      ctx.rect(-99999, capLineY, 199999, 299999);
-      ctx.clip();
-    }
-    // Small punctuation (comma, period, semicolon): clip to the baseline zone so that
-    // glyphs normalised too tall (from a pre-fix scan) can't escape the expected area.
-    const isSmPunct=ch&&',.;'.includes(ch);
-    if(isSmPunct){
-      const sc0=this.sc;
-      const zoneTop=baseY-(N.BL-N.XH)*sc0*0.45; // up to ~45 % of x-height above baseline
-      const zoneBot=baseY+(N.DESC-N.BL)*sc0*0.80; // up to 80 % of descender zone below
-      ctx.beginPath();
-      ctx.rect(-99999, zoneTop, 199999, zoneBot-zoneTop);
-      ctx.clip();
-    }
+    // No clipping: glyphs render exactly where drawn on the scan canvas.
+    // Proportional y-mapping already places each character at its correct position.
     ctx.translate(pivotX+jit.dx, pivotY+jit.dy);
     ctx.rotate(jit.rot);
     ctx.scale(jit.sx, jit.sy);

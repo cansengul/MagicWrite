@@ -1801,6 +1801,22 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   </div>
 </div>
 
+<!-- TUTORIAL MODAL -->
+<div id="tutorial-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);align-items:center;justify-content:center">
+  <div style="background:var(--sidebar-bg,#fff);border-radius:18px;padding:32px 28px 24px;max-width:420px;width:92%;box-shadow:0 12px 48px rgba(0,0,0,.28);display:flex;flex-direction:column;gap:20px;position:relative">
+    <!-- Step indicators -->
+    <div style="display:flex;gap:6px;justify-content:center" id="tut-dots"></div>
+    <!-- Content area -->
+    <div id="tut-content" style="min-height:160px;display:flex;flex-direction:column;gap:12px"></div>
+    <!-- Navigation -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px">
+      <button id="tut-btn-prev" class="btn btn-o" onclick="tutPrev()" style="font-size:13px;opacity:0.5;pointer-events:none">← Zurück</button>
+      <button class="btn btn-o" onclick="tutSkip()" style="font-size:12px;color:var(--ink-soft)">Überspringen</button>
+      <button id="tut-btn-next" class="btn" onclick="tutNext()" style="font-size:13px">Weiter →</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN MODAL (multi-screen) -->
 <div id="login-modal">
   <div class="login-card">
@@ -2196,6 +2212,22 @@ const N = {
       ]);
     }
     const sy=this.H/380; // proportional canvas→N.H factor (canvas height = 380px)
+
+    // ── Custom symbols (not in CHARS) and German quote marks ──
+    // Proportional Y-mapping preserves the vertical position the user drew at:
+    // a low symbol (like „) stays near the baseline; a descender goes below BL.
+    const isCustomSymbol = ch && !CHARS.includes(ch);
+    const isQuote = ch && '„\u201C\u2019'.includes(ch);
+    if(isCustomSymbol || isQuote){
+      const scX = Math.min((this.W*0.85)/(rw||1),(this.H*0.55)/(rh||1));
+      const sw  = (rw||1)*scX;
+      const ox  = (this.W-sw)/2;
+      return strokes.map(s=>s.map(p=>({
+        x:(p.x-x0)*scX+ox,
+        y:p.y*sy,
+        p:p.p??0.5
+      })));
+    }
 
     // ── Small punctuation: comma, period, semicolon ──
     // These marks are naturally tiny. Without a height cap the normalizer blows them up
@@ -3239,7 +3271,7 @@ function applyToolCursor(){
 // ═══════════════════════════════════════════════════════════
 // APP STATE
 // ═══════════════════════════════════════════════════════════
-const CHARS='ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789'.split('').concat([',','.',';',':','!','?','-','+','=','/','(',')','"',"'",'&','@','#','%','€']);
+const CHARS='ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÜabcdefghijklmnopqrstuvwxyzäöüß0123456789'.split('').concat([',','.',';',':','!','?','-','+','=','/','(',')','"',"'",'&','@','#','%','€','„','\u201C','\u2019']);
 const store=new GlyphStore();
 const recorder=new Recorder('rec-cv');
 const engine=new RenderEngine(store);
@@ -3998,6 +4030,95 @@ function setThemeQuiet(t){
     if(!btn) return;
     Object.assign(btn.style, k===t ? active : reset);
   });
+}
+
+// ═══════════════════════════════════════════════════════════
+// TUTORIAL
+// ═══════════════════════════════════════════════════════════
+const _TUT_STEPS = [
+  {
+    icon:'✏️',
+    title:'Willkommen bei MagicWrite',
+    text:'MagicWrite verwandelt deinen Text in deine persönliche Handschrift. Du scannst deine Buchstaben einmalig ein — danach schreibt die App jeden Text in deiner Schrift.'
+  },
+  {
+    icon:'🔤',
+    title:'Tab „Einrichten" — Buchstaben einscannen',
+    text:'Wechsle zum Tab <strong>Einrichten</strong> (links oben). Wähle einen Buchstaben aus dem Raster, dann zeichne ihn mit deinem Stift entlang der Hilfslinien:<br><br>• Großbuchstaben bis zur <em>Cap-Linie</em> oben<br>• Kleinbuchstaben bis zur <em>x-Höhe</em><br>• Buchstaben wie g, p, y dürfen unter die Grundlinie'
+  },
+  {
+    icon:'⚡',
+    title:'Schnellscan — alles auf einmal',
+    text:'Tippe auf den <strong>Schnellscan-Button</strong> (⚡ oben) um alle Buchstaben der Reihe nach einzuscannen. Nach dem Zeichnen wartet die App kurz und springt automatisch weiter.<br><br>Mit <strong>Zurück</strong> kannst du den letzten Buchstaben neu zeichnen — die alte Version wird automatisch gelöscht.'
+  },
+  {
+    icon:'📄',
+    title:'Tab „Dokument" — Text schreiben',
+    text:'Wechsle zum Tab <strong>Dokument</strong>. Tippe deinen Text in das Textfeld — MagicWrite rendert ihn sofort in deiner Handschrift auf dem Papier.<br><br>Tipp: Du kannst ChatGPT-Texte direkt einfügen — Markdown-Formatierung (Fett, Kursiv) wird automatisch entfernt, Nummerierungen bleiben erhalten.'
+  },
+  {
+    icon:'📤',
+    title:'Exportieren',
+    text:'Tippe auf das <strong>↓-Symbol</strong> oben rechts um zu exportieren:<br><br>• <strong>PDF</strong> — für Druck oder Archiv<br>• <strong>GoodNotes</strong> — als bearbeitbare Ink-PDF importieren<br>• Einzelne Seiten per Drag & Drop in GoodNotes ziehen<br><br>Viel Spaß mit MagicWrite! 🎉'
+  }
+];
+let _tutStep = 0;
+
+function showTutorial(){
+  _tutStep = 0;
+  _renderTutStep();
+  const m = document.getElementById('tutorial-modal');
+  if(m){ m.style.display='flex'; if(window.lucide) lucide.createIcons(); }
+}
+
+function _renderTutStep(){
+  const s = _TUT_STEPS[_tutStep];
+  const content = document.getElementById('tut-content');
+  const dots    = document.getElementById('tut-dots');
+  const btnPrev = document.getElementById('tut-btn-prev');
+  const btnNext = document.getElementById('tut-btn-next');
+  if(!content) return;
+
+  content.innerHTML = `
+    <div style="font-size:32px;text-align:center">${s.icon}</div>
+    <div style="font-weight:700;font-size:16px;text-align:center">${s.title}</div>
+    <div style="font-size:13px;color:var(--ink-soft,#555);line-height:1.65;text-align:center">${s.text}</div>
+  `;
+
+  if(dots){
+    dots.innerHTML = _TUT_STEPS.map((_,i)=>
+      `<div style="width:8px;height:8px;border-radius:50%;background:${i===_tutStep?'var(--accent)':'var(--ui-border,#ccc)'}"></div>`
+    ).join('');
+  }
+
+  if(btnPrev){
+    const first = _tutStep===0;
+    btnPrev.style.opacity = first ? '0.35' : '1';
+    btnPrev.style.pointerEvents = first ? 'none' : '';
+  }
+  if(btnNext){
+    btnNext.textContent = _tutStep===_TUT_STEPS.length-1 ? 'Los geht\'s ✓' : 'Weiter →';
+  }
+}
+
+function tutNext(){
+  if(_tutStep < _TUT_STEPS.length-1){ _tutStep++; _renderTutStep(); }
+  else tutSkip();
+}
+function tutPrev(){
+  if(_tutStep > 0){ _tutStep--; _renderTutStep(); }
+}
+function tutSkip(){
+  const m = document.getElementById('tutorial-modal');
+  if(m) m.style.display='none';
+  localStorage.setItem('mw-tutorial-done','1');
+  // After tutorial, show finger modal if not yet decided
+  if(!_fingerPrefSet) setTimeout(()=>{
+    const fm = document.getElementById('finger-modal');
+    if(fm){ fm.style.display='flex'; if(window.lucide) lucide.createIcons(); }
+    _fingerPrefSet=true;
+    localStorage.setItem('mw-finger-pref-set','1');
+  }, 400);
 }
 
 // ── SETTINGS MODAL ──
@@ -6036,6 +6157,22 @@ async function resetAccount(){
 
   // Load saved profile silently on startup
   try{await loadProfile();}catch(e){}
+
+  // ── First-launch: show tutorial, then finger modal ──────────────
+  // Tutorial shown once ever; finger modal shown after tutorial closes
+  // (or directly on first load if tutorial was already completed).
+  const _tutDone      = localStorage.getItem('mw-tutorial-done');
+  const _fingerSet    = localStorage.getItem('mw-finger-pref-set');
+  if(!_tutDone){
+    setTimeout(showTutorial, 600);
+  } else if(!_fingerSet && !_fingerPrefSet){
+    setTimeout(()=>{
+      const fm = document.getElementById('finger-modal');
+      if(fm){ fm.style.display='flex'; if(window.lucide) lucide.createIcons(); }
+      _fingerPrefSet=true;
+      localStorage.setItem('mw-finger-pref-set','1');
+    }, 600);
+  }
 
   // Initialize Lucide icons
   if(window.lucide) lucide.createIcons();

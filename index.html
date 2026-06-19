@@ -1784,7 +1784,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 </div>
 
 <!-- FINGER-DRAW MODAL -->
-<div id="finger-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+<div id="finger-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);align-items:center;justify-content:center">
   <div style="background:var(--sidebar-bg,#fff);border-radius:14px;padding:28px 24px;max-width:340px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,.22);display:flex;flex-direction:column;gap:16px">
     <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px">
       <i data-lucide="hand" style="width:18px;height:18px;color:var(--accent)"></i>
@@ -2764,18 +2764,21 @@ class RenderEngine {
 // ═══════════════════════════════════════════════════════════
 function stripMarkdown(t){
   return t
-    .replace(/^#{1,6}\s+/gm,'')
-    .replace(/\*\*(.+?)\*\*/g,'$1')
-    .replace(/\*(.+?)\*/g,'$1')
-    .replace(/__(.+?)__/g,'$1')
-    .replace(/_(.+?)_/g,'$1')
-    .replace(/~~(.+?)~~/g,'$1')
-    .replace(/`{1,3}[^`]*`{1,3}/g,'')
-    .replace(/^\s*[-*+]\s+/gm,'')
-    .replace(/^\s*\d+\.\s+/gm,'')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1')
-    .replace(/^>\s+/gm,'')
-    .replace(/^[-*_]{3,}\s*$/gm,'')
+    .replace(/^#{1,6}\s+/gm,'')              // ## Heading → Heading (text bleibt)
+    .replace(/\*\*\*(.+?)\*\*\*/g,'$1')      // bold+italic → text
+    .replace(/\*\*(.+?)\*\*/g,'$1')          // **bold** → text
+    .replace(/\*(.+?)\*/g,'$1')              // *italic* → text
+    .replace(/___(.+?)___/g,'$1')            // ___bold+italic___ → text
+    .replace(/__(.+?)__/g,'$1')              // __bold__ → text
+    .replace(/_(.+?)_/g,'$1')               // _italic_ → text
+    .replace(/~~(.+?)~~/g,'$1')             // ~~strikethrough~~ → text
+    .replace(/```[^\n]*\n([\s\S]*?)```/gm,'$1') // ```code block``` → Inhalt bleibt
+    .replace(/`([^`]+)`/g,'$1')                // `inline code` → text (Inhalt bleibt)
+    .replace(/^\s*([-*+])\s+/gm,'- ')       // Bullet * / + → "- " (einheitlich)
+    .replace(/^(\s*\d+\.)\s+/gm,'$1 ')      // "1." bleibt als "1. " (Nummerierung behalten)
+    .replace(/\[([^\]]+)\]\([^)]+\)/g,'$1') // [text](url) → text
+    .replace(/^>\s*/gm,'')                  // > Blockquote → Text ohne >
+    .replace(/^[-*_]{3,}\s*$/gm,'')         // --- horizontale Linie entfernen
     .replace(/\n{3,}/g,'\n\n')
     .trim();
 }

@@ -2132,6 +2132,25 @@ const N = {
     }
     const sy=this.H/380; // proportional canvas→N.H factor (canvas height = 380px)
 
+    // ── Small punctuation: comma, period, semicolon ──
+    // These marks are naturally tiny. Without a height cap the normalizer blows them up
+    // to fill 80 % of the full box, making them appear as large as an uppercase letter.
+    // We cap their height to the x-height zone (BL − XH = 40 N-units) and anchor at BL.
+    const isSmallPunct = ch && ',.;'.includes(ch);
+    if(isSmallPunct){
+      const maxH = this.BL - this.XH; // 40 N-units — x-height region only
+      const scP  = Math.min(maxH/(rh||1), (this.W*0.55)/(rw||1));
+      const shP  = (rh||1)*scP, swP=(rw||1)*scP;
+      const oxP  = (this.W - swP)/2;
+      // Comma/semicolon extend just below baseline; period stays at baseline.
+      const oyP  = ch==='.' ? this.BL-shP : this.BL - shP*0.3;
+      return strokes.map(s=>s.map(p=>({
+        x:(p.x-x0)*scP+oxP,
+        y:(p.y-y0)*scP+oyP,
+        p:p.p??0.5
+      })));
+    }
+
     // ── Descender letters (g,j,p,q,y): proportional y-mapping, legacy x-scale ──
     // Kept separate so existing stored descender glyphs continue to work.
     if(ch && 'gjpqy'.includes(ch)){
@@ -2391,13 +2410,15 @@ class RenderEngine {
     const avg=vs.reduce((s,v)=>s+v.aw,0)/vs.length;
     let adv=avg*this.sc*this.cfg.letterSpacing*zs;
     // Floor: advance must cover the glyph's visual width regardless of letterSpacing.
-    // (avg - 16) is the raw x-span in N space (16 is the padding added by advance()).
-    // Without this, tight letterSpacing makes wide letters like m/n overlap the next char.
-    const visualW=(avg-16)*this.sc*zs;
+    // For descenders (g,j,p,q,y) we use the full aw (avg) because their left margin (ox)
+    // is small, so avg-16 can leave the cursor behind the rightmost stroke of the glyph,
+    // causing it to visually overlap the character that follows (or precedes after jitter).
+    const isDesc = ch && 'gjpqy'.includes(ch);
+    const visualW = isDesc ? avg*this.sc*zs : (avg-16)*this.sc*zs;
     if(adv<visualW) adv=visualW;
     // Extra floor for narrow centered letters (i, l…): their stored aw≈16 after centering,
     // giving a visual width of 0. Use a fixed minimum that does NOT scale with letterSpacing.
-    if('ijl!|'.includes(ch)) adv=Math.max(adv,this.cfg.fontSize*0.32);
+    if('ijl!|'.includes(ch)) adv=Math.max(adv,this.cfg.fontSize*0.22);
     return adv;
   }
 
@@ -2515,12 +2536,25 @@ class RenderEngine {
     const pivotY=baseY;
 
     ctx.save();
-    // Uppercase: clip at cap line so tall glyphs (e.g. scanned past the top guide) stay within the line
+    // Clip uppercase + digits at the ruling cap line so tall glyphs stay within the line.
+    // Use this.sc (not zs-adjusted) so the clip aligns with the actual ruling guide.
     const isUpper=ch&&((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
-    if(isUpper){
-      const capLineY=baseY-(N.BL-N.CAP)*sc;
+    const isDigit=ch&&(ch>='0'&&ch<='9');
+    if(isUpper||isDigit){
+      const capLineY=baseY-(N.BL-N.CAP)*this.sc;
       ctx.beginPath();
       ctx.rect(-99999, capLineY, 199999, 299999);
+      ctx.clip();
+    }
+    // Small punctuation (comma, period, semicolon): clip to the baseline zone so that
+    // glyphs normalised too tall (from a pre-fix scan) can't escape the expected area.
+    const isSmPunct=ch&&',.;'.includes(ch);
+    if(isSmPunct){
+      const sc0=this.sc;
+      const zoneTop=baseY-(N.BL-N.XH)*sc0*0.45; // up to ~45 % of x-height above baseline
+      const zoneBot=baseY+(N.DESC-N.BL)*sc0*0.80; // up to 80 % of descender zone below
+      ctx.beginPath();
+      ctx.rect(-99999, zoneTop, 199999, zoneBot-zoneTop);
       ctx.clip();
     }
     ctx.translate(pivotX+jit.dx, pivotY+jit.dy);
@@ -3269,7 +3303,7 @@ function refreshChar(){
     const cv=document.createElement('canvas');cv.width=100;cv.height=100;
     drawPreview(cv,v);w.appendChild(cv);
     const db=document.createElement('button');db.className='vdel';db.textContent='×';
-    db.onclick=()=>{store.del(ch,i);buildGrid();persistProfile();refreshChar();updateProg();schedRender()};
+    db.onclick=()=>{store.del(ch,i);buildGrid();persistProfile();refreshChar();updateProg();schedRender();scheduleManualSync();};
     w.appendChild(db);row.appendChild(w);
   });
   updateProg();
@@ -3440,8 +3474,8 @@ function saveStroke(){
   if(curCustomIdx>=0){refreshCustomChar();buildCustomGrid();}else{refreshChar();}
   persistProfile(); // saves locally immediately; cloud sync follows below
   schedRender();
-  // Schedule a debounced cloud sync (30 s) so rapid sequential scans send only one request
-  if(fbUser && fbDb){ clearTimeout(_glyphSyncTimer); _glyphSyncTimer=setTimeout(()=>{ if(_dirty.glyphs) scheduleSync(); },30000); }
+  // 10-second debounce for manual tab edits — rapid changes extend the wait
+  scheduleManualSync();
   if(scanQueue.length>0){
     advanceScanQueue();
   } else {
@@ -4706,6 +4740,8 @@ const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36)
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let fbListener = null;
 let syncTimer = null;
+let _manualEditTimer  = null; // 10-s debounce for manual Einrichten-tab changes
+let _manualCountdown  = null; // 1-s interval that drives the countdown badge
 let _glyphSyncTimer = null; // separate debounce for glyph-only cloud syncs
 let fbReady = false;
 
@@ -4737,7 +4773,9 @@ function initFirebase(){
           setSyncStatus('idle');
         } else {
           closeVerifyRequiredModal();
-          loadFromFirebase();
+          // MUST await: subscribeToFirebase fires immediately on attach and would
+          // overwrite pending local changes before the merge modal can appear.
+          await loadFromFirebase();
           subscribeToFirebase();
         }
       } else {
@@ -4971,8 +5009,8 @@ async function loadFromFirebase(){
     let data;
     let glyphsWereSkipped = false;
 
-    if(cloudTs && cachedTs && cloudTs === cachedTs && store.count() > 0){
-      // Timestamp matches → glyphs are unchanged since last download.
+    if(cloudTs && cachedTs && cloudTs === cachedTs && store.count() > 0 && !_dirty.glyphs){
+      // Timestamp matches AND no pending local changes → glyphs are unchanged.
       // Fetch only the lightweight metadata fields (skip the big glyphs string).
       const [sSnap, pSnap, ccSnap, sessSnap] = await Promise.all([
         fbDb.ref(`users/${uid}/settings`).once('value'),
@@ -5317,16 +5355,55 @@ function scheduleSync(){
   syncTimer = setTimeout(pushToFirebase, 1500);
 }
 
-// Flush immediately on tab hide or page unload so no data is lost
-document.addEventListener('visibilitychange', () => {
-  if(document.hidden && syncTimer){
-    clearTimeout(syncTimer); syncTimer = null;
+// Manual-edit debounce: called when the user adds/removes a variant in the Einrichten tab.
+// Saves locally immediately; waits 10 s (resetting on each further change) before uploading.
+// On page reload before the timer fires, the pending-dirty flag triggers the merge modal.
+function scheduleManualSync(){
+  _dirty.glyphs = true;
+  localStorage.setItem('mw-glyphs-dirty', '1');
+  if(!fbUser || !fbDb){ return; } // no cloud configured — local save is enough
+
+  // Reset both timers so every new edit restarts the 10-s window
+  clearTimeout(_manualEditTimer);
+  clearInterval(_manualCountdown);
+
+  // Countdown badge
+  let remaining = 10;
+  _showCountdownBadge(remaining);
+  _manualCountdown = setInterval(() => {
+    remaining--;
+    if(remaining > 0){
+      _showCountdownBadge(remaining);
+    } else {
+      clearInterval(_manualCountdown);
+      _manualCountdown = null;
+    }
+  }, 1000);
+
+  _manualEditTimer = setTimeout(() => {
+    _manualEditTimer = null;
+    clearInterval(_manualCountdown);
+    _manualCountdown = null;
     pushToFirebase();
-  }
-});
-window.addEventListener('beforeunload', () => {
-  if(syncTimer){ clearTimeout(syncTimer); syncTimer = null; pushToFirebase(); }
-});
+  }, 10000);
+}
+
+function _showCountdownBadge(seconds){
+  const badge = document.getElementById('sync-badge');
+  if(!badge) return;
+  badge.style.display = 'flex';
+  badge.innerHTML = `· Ausstehend <span style="opacity:.55;font-variant-numeric:tabular-nums;margin-left:3px">(${seconds}s)</span>`;
+  badge.className = 'sync-badge sync-pending';
+}
+
+// Flush immediately on tab hide or page unload so no data is lost
+function _flushAllSyncTimers(){
+  if(syncTimer){        clearTimeout(syncTimer);        syncTimer       = null; pushToFirebase(); }
+  if(_manualEditTimer){ clearTimeout(_manualEditTimer); _manualEditTimer = null; pushToFirebase(); }
+  if(_manualCountdown){ clearInterval(_manualCountdown); _manualCountdown = null; }
+}
+document.addEventListener('visibilitychange', () => { if(document.hidden) _flushAllSyncTimers(); });
+window.addEventListener('beforeunload', _flushAllSyncTimers);
 
 async function pushToFirebase(){
   if(!fbUser || !fbDb) return;

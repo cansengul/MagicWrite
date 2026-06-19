@@ -2077,7 +2077,15 @@ const _GLYPH_TS_KEY = 'mw-glyph-ts';
 
 // ── FIREBASE DIRTY FLAGS (only sync what changed) ───────────
 // Initialized true so first push after login sends everything
-const _dirty = { glyphs: true, settings: true, customChars: true, prefs: true };
+// _dirty.glyphs persists across page reloads via localStorage ('mw-glyphs-dirty').
+// This ensures scanned letters that haven't been uploaded yet survive a mid-scan reload.
+// Values: null/missing = first login (upload everything); '0' = in sync; '1' = pending upload.
+const _dirty = {
+  glyphs:      localStorage.getItem('mw-glyphs-dirty') !== '0',
+  settings:    true,
+  customChars: true,
+  prefs:       true
+};
 let _defaultFormatSaved = false; // becomes true once user clicks "Als Standard festlegen"
 
 // ── APPLE PENCIL DETECTION ──────────────────────────────────
@@ -3665,6 +3673,8 @@ async function persistProfile(){
   const tx=db.transaction('profiles','readwrite');
   tx.objectStore('profiles').put({name:'default',g:store.toJSON(),ts:Date.now()});
   _dirty.glyphs = true;
+  // Mark as pending upload so this survives a page reload before the scan modal is closed
+  localStorage.setItem('mw-glyphs-dirty', '1');
   // Do NOT scheduleSync() here — glyphs are saved locally on every scan.
   // Cloud sync happens once when the scan modal is closed (bandwidth-friendly).
   updateGlyphLimitBar();
@@ -4994,6 +5004,9 @@ async function loadFromFirebase(){
     if(glyphsWereSkipped){
       if(data.settings || data.preferences || data.customChars)
         applyFirebaseData(data, true);
+      // If local glyphs are marked dirty (e.g. scanned before a mid-session reload),
+      // upload them now — the cloud timestamp matched but local has newer data.
+      if(_dirty.glyphs && store.count() > 0) scheduleSync();
       setSyncStatus('synced');
       return;
     }
@@ -5185,6 +5198,8 @@ function subscribeToFirebase(){
     applyFirebaseData(data, false);
     // Cache the new timestamp so the next page load skips re-downloading glyphs
     if(data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
+    // Cloud data is now applied — local is in sync, clear the pending-upload flag
+    if(data.glyphs) localStorage.setItem('mw-glyphs-dirty', '0');
     setSyncStatus('synced');
     showToast('↻ Von anderem Gerät synchronisiert');
   };
@@ -5379,6 +5394,8 @@ async function pushToFirebase(){
         const tsSnap = await fbDb.ref(`users/${fbUser.uid}/_updatedAt`).once('value');
         if(tsSnap.val()) localStorage.setItem(_GLYPH_TS_KEY, String(tsSnap.val()));
       }catch(_){}
+      // Glyphs are now in sync — clear the pending-upload flag
+      localStorage.setItem('mw-glyphs-dirty', '0');
     }
   }catch(err){
     // Restore dirty flags so next sync retries the failed fields

@@ -2336,6 +2336,7 @@ function getZoneScale(ch){
   if('bdfhiklt'.includes(ch)||ch==='ß') return 1.0; // ascenders: normalized proportionally
   if('äöü'.includes(ch)) return 1.0;    // umlauts: normalized proportionally
   if(ch>='a'&&ch<='z') return 1.0;      // regular lowercase: normalized proportionally
+  if('-–—+×÷=~·•'.includes(ch)) return 1.0; // mid-line symbols: no compression
   return 0.80;
 }
 
@@ -2404,12 +2405,20 @@ function drawGuides(ctx, w, h){
 // ═══════════════════════════════════════════════════════════
 // GLYPH STORE
 // ═══════════════════════════════════════════════════════════
+const _MID_LINE_CHARS = '-–—+×÷=~·•';
+
 class GlyphStore {
   constructor(){this.g={}}
   add(ch,strokes){
     const n=N.normalize(strokes,ch);
     if(!this.g[ch]) this.g[ch]=[];
-    this.g[ch].push({strokes:n,aw:N.advance(n)});
+    // Mid-line symbols: always replace all variants so old baseline-anchored
+    // scans don't persist alongside newly centered ones.
+    if(_MID_LINE_CHARS.includes(ch)){
+      this.g[ch]=[{strokes:n,aw:N.advance(n)}];
+    } else {
+      this.g[ch].push({strokes:n,aw:N.advance(n)});
+    }
   }
   get(ch){return this.g[ch]||null}
   has(ch){return !!(this.g[ch]&&this.g[ch].length)}
@@ -2423,10 +2432,31 @@ class GlyphStore {
       this._needsMigration=false;
     } else {
       // Legacy format (v1): glyph object stored directly.
-      // Lowercase glyphs were normalised with old bounding-box method and will
-      // render too tall with the new proportional scheme — user must re-scan them.
       this.g=d;
       this._needsMigration=true;
+    }
+    this._migrateMidLine();
+  }
+  // One-time migration: mid-line chars that were stored with old bounding-box
+  // normalization have all stroke y-values ≥ N.BL (≈108). Shift them to the
+  // correct mid-line position (≈88 N-units) so existing glyphs render correctly
+  // without requiring a re-scan.
+  _migrateMidLine(){
+    const target = (N.BL + N.XH) / 2; // 88 N-units
+    for(const ch of _MID_LINE_CHARS){
+      const variants = this.g[ch];
+      if(!variants) continue;
+      for(const v of variants){
+        const allY = v.strokes.flat().map(p=>p.y);
+        if(!allY.length) continue;
+        const medY = allY.reduce((a,b)=>a+b,0)/allY.length;
+        // Old normalization collapses the dash to y ≈ N.BL (108).
+        // If median y is within 8 N-units of baseline, it's the old layout.
+        if(medY >= N.BL - 8){
+          const shift = target - N.BL; // -20
+          v.strokes = v.strokes.map(s=>s.map(p=>({...p, y:p.y+shift})));
+        }
+      }
     }
   }
 }

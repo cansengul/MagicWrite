@@ -3187,7 +3187,8 @@ function loadCustomChars(){
 }
 function saveCustomCharsStore(){
   localStorage.setItem('mw-custom-chars',JSON.stringify(customChars));
-  scheduleSync();
+  _dirty.customChars = true;
+  scheduleManualSync();
 }
 function addCustomChar(){
   const inp=document.getElementById('custom-input');
@@ -5148,6 +5149,7 @@ function mergeKeepLocal(){
     applyFirebaseData(dataWithoutGlyphs, true);
   }
   buildCustomGrid(); // always refresh custom-char grid after merge
+  if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
   _dirty.glyphs = true;
   scheduleSync();
   showToast('Lokale Zeichen werden hochgeladen');
@@ -5162,6 +5164,7 @@ function mergeUseCloud(){
     applyFirebaseData(d, true);
   }
   buildCustomGrid(); // always refresh custom-char grid after merge
+  if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
   showToast('Konto-Zeichen wurden geladen');
 }
 
@@ -5198,6 +5201,7 @@ function mergeCombine(){
     }
   }
   buildCustomGrid();
+  if(curCustomIdx >= 0) refreshCustomChar();
   _dirty.glyphs = true;
   scheduleSync();
   showToast('Zeichen wurden zusammengeführt');
@@ -5273,6 +5277,7 @@ function applyFirebaseData(data, isInitialLoad){
       customChars = JSON.parse(data.customChars);
       localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
       buildCustomGrid();
+      if(curCustomIdx >= 0) refreshCustomChar();
     }
   }catch(e){}
 

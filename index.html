@@ -5140,13 +5140,23 @@ async function loadFromFirebase(){
 }
 
 function mergeKeepLocal(){
-  // Keep local glyphs, apply only settings/prefs/customChars from cloud, then upload
+  // Keep local glyphs AND local customChars; merge in any cloud-only custom symbols; upload everything
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    const dataWithoutGlyphs = Object.assign({}, d, { glyphs: null });
-    applyFirebaseData(dataWithoutGlyphs, true);
+    // Merge customChars: add cloud symbols not already local (local additions are preserved)
+    if(d.customChars){
+      try{
+        const cloudCC = JSON.parse(d.customChars);
+        cloudCC.forEach(ch => { if(!customChars.includes(ch)) customChars.push(ch); });
+        localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
+        _dirty.customChars = true;
+      }catch(e){}
+    }
+    // Apply only settings/prefs from cloud (no glyphs, no customChars override)
+    const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
+    applyFirebaseData(dataSettingsOnly, true);
   }
   buildCustomGrid(); // always refresh custom-char grid after merge
   if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();

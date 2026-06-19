@@ -2188,16 +2188,13 @@ const N = {
       })));
     }
 
-    // ── Standard bounding-box normalization for uppercase, digits, symbols ──
-    // Uppercase letters: cap height capped at BL–CAP so tall glyphs stay within the line.
-    const sc=Math.min((this.H*0.80)/(rh||1),(this.W*0.90)/(rw||1));
-    const sw=(rw||1)*sc;
+    // ── Standard bounding-box normalization for uppercase, digits, and custom/special symbols ──
+    // All chars reaching this path are capped to BL-CAP (cap-to-baseline zone)
+    // so they always render within the ruling lines.
+    const maxH = this.BL - this.CAP; // 86 N-units — cap-to-baseline zone
+    const scFinal = Math.min(maxH/(rh||1), (this.W*0.90)/(rw||1));
+    const sw=(rw||1)*scFinal;
     const ox=(this.W-sw)/2;
-    // Digits are treated like uppercase: cap their height to BL-CAP so they stay within the ruling lines.
-    const isUpper = ch && ((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch)||(ch>='0'&&ch<='9'));
-    const maxH = isUpper ? (this.BL-this.CAP) : (this.H*0.80);
-    const scY = Math.min(maxH/(rh||1), (this.H*0.80)/(rh||1));
-    const scFinal = Math.min(scY, (this.W*0.90)/(rw||1));
     const sh=(rh||1)*scFinal;
     const oy=this.BL-sh;
     return strokes.map(s=>s.map(p=>({
@@ -2536,11 +2533,13 @@ class RenderEngine {
     const pivotY=baseY;
 
     ctx.save();
-    // Clip uppercase + digits at the ruling cap line so tall glyphs stay within the line.
+    // Clip at the ruling cap line for uppercase, digits, and custom/special symbols
+    // so all non-lowercase glyphs stay within the line zone.
     // Use this.sc (not zs-adjusted) so the clip aligns with the actual ruling guide.
     const isUpper=ch&&((ch>='A'&&ch<='Z')||'ÄÖÜ'.includes(ch));
     const isDigit=ch&&(ch>='0'&&ch<='9');
-    if(isUpper||isDigit){
+    const isLower=ch&&((ch>='a'&&ch<='z')||'äöüß'.includes(ch));
+    if(isUpper||isDigit||(!isLower&&ch)){
       const capLineY=baseY-(N.BL-N.CAP)*this.sc;
       ctx.beginPath();
       ctx.rect(-99999, capLineY, 199999, 299999);
@@ -3493,8 +3492,17 @@ function prevChar(){
     if(scanQueueIdx>0){
       scanQueueIdx--;
       const ch=scanQueue[scanQueueIdx];
+      // Delete the most recently saved variant so the user can re-draw it
+      if(store.has(ch)){
+        const variants=store.get(ch);
+        if(variants&&variants.length>0){
+          store.del(ch,variants.length-1);
+          persistProfile();
+          buildGrid();updateProg();
+        }
+      }
       selectCharForScan(ch);
-      showToast(`(${scanQueueIdx+1}\u202f/\u202f${scanQueue.length}) „${ch}" – zurück`);
+      showToast(`(${scanQueueIdx+1}\u202f/\u202f${scanQueue.length}) „${ch}" – zurück, bitte neu zeichnen`);
     }
     return;
   }

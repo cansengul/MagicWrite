@@ -3338,11 +3338,29 @@ function drawPreview(cv,gd){
 }
 
 function updateProg(){
-  const c=store.count(),t=CHARS.length;
-  document.getElementById('prog-fill').style.width=(c/t*100)+'%';
+  const c=CHARS.filter(ch=>store.has(ch)).length,t=CHARS.length;
+  document.getElementById('prog-fill').style.width=Math.min(c/t*100,100)+'%';
   document.getElementById('prog-cnt').textContent=c;
   const tot=document.getElementById('prog-total');
   if(tot) tot.textContent=t;
+}
+
+// Scan the store for keys not in CHARS and add them to customChars if missing.
+// Called after any glyph load (local DB or cloud) so custom symbols always appear
+// in the Eigene-Symbole grid even when the customChars list was not synced.
+function _reconcileCustomChars(){
+  let changed=false;
+  Object.keys(store.g||{}).forEach(key=>{
+    if(!CHARS.includes(key)&&!customChars.includes(key)){
+      customChars.push(key);
+      changed=true;
+    }
+  });
+  if(changed){
+    localStorage.setItem('mw-custom-chars',JSON.stringify(customChars));
+    _dirty.customChars=true;
+    buildCustomGrid();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -3708,7 +3726,8 @@ async function loadProfile(){
     if(!r){return;}
     store.fromJSON(r.g);
     _checkMigration();
-    buildGrid();refreshChar();schedRender();
+    _reconcileCustomChars();
+    buildGrid();refreshChar();updateProg();schedRender();
   };
 }
 async function persistProfile(){
@@ -5298,6 +5317,10 @@ function applyFirebaseData(data, isInitialLoad){
       if(curCustomIdx >= 0) refreshCustomChar();
     }
   }catch(e){}
+
+  // Ensure every store key that isn't a standard char is listed in customChars.
+  // Repairs the case where glyphs were synced but customChars was missing/stale.
+  _reconcileCustomChars();
 
   // Settings (only apply on initial load to avoid overwriting live edits)
   if(isInitialLoad){

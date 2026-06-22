@@ -4355,22 +4355,25 @@ function openPageExportModal(){
     exp.width=PAGE_W*2; exp.height=PAGE_H*2;
     exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
 
-    // <img> with blob-URL src — the browser/OS handles drag natively.
-    // On iPadOS: long-press the image, then drag to GoodNotes. The OS passes the
-    // actual PNG binary directly — no JavaScript dragstart handler needed or wanted
-    // (adding one causes Safari to intercept the blob-URL as a page navigation instead).
-    // On desktop: default browser image drag copies the src URL; click downloads.
+    // IMPORTANT: src must be a data-URL, NOT a blob-URL.
+    // On iPadOS, when you drag an <img> to another app (GoodNotes), the OS extracts
+    // the PNG binary straight from the data-URL in src and hands it to the receiving
+    // app. A blob-URL cannot be fetched cross-app, so GoodNotes only receives the URL
+    // string and opens it in Safari instead.
     const thumb=document.createElement('img');
     thumb.width=tw; thumb.height=th;
     thumb.style.cssText='border-radius:4px;display:block;cursor:grab;-webkit-touch-callout:default';
     thumb.title=`Seite ${pg+1} – gedrückt halten & zu GoodNotes ziehen, oder antippen zum Herunterladen`;
     thumb.alt=`Seite ${pg+1}`;
 
-    // Set blob-URL as src — this is what the OS hands to GoodNotes on drag
+    // Use data-URL so iPadOS can pass real PNG bytes to GoodNotes on drag.
+    // toBlob is async; once ready, replace placeholder with the final data-URL.
     exp.toBlob(blob=>{
       if(!blob) return;
       dragBlob=blob;
-      thumb.src=URL.createObjectURL(blob);
+      const fr=new FileReader();
+      fr.onload=()=>{ thumb.src=fr.result; }; // data-URL
+      fr.readAsDataURL(blob);
     },'image/png');
 
     // Click → download transparent PNG

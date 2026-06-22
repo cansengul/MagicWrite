@@ -1304,7 +1304,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <textarea id="txt" placeholder="Text eingeben – wird sofort als Handschrift gerendert…&#10;ChatGPT-Text (Markdown) einfach einsetzen – Formatierung wird automatisch entfernt." oninput="schedRender()"></textarea>
     <div style="display:flex;flex-direction:column;gap:5px">
       <button class="btn btn-p" onclick="schedRender()">↻ Render</button>
-      <button class="btn btn-o btn-sm" onclick="document.getElementById('txt').value='';schedRender()">Leeren</button>
+      <button class="btn btn-o btn-sm" onclick="document.getElementById('txt').value='';localStorage.removeItem('mw-txt');localStorage.removeItem('mw-page');schedRender()">Leeren</button>
     </div>
   </div>
 </main>
@@ -3240,6 +3240,14 @@ function goPage(delta){
   const p=pagesData[curPageIdx];
   if(p) p.wrap.scrollIntoView({behavior:'smooth',block:'nearest'});
   updatePageNav();
+  localStorage.setItem('mw-page',String(curPageIdx));
+}
+function jumpToPage(idx){
+  const n=pagesData.length;
+  curPageIdx=Math.max(0,Math.min(n-1,idx));
+  const p=pagesData[curPageIdx];
+  if(p) p.wrap.scrollIntoView({behavior:'instant',block:'nearest'});
+  updatePageNav();
 }
 
 function applyToolCursor(){
@@ -3682,6 +3690,7 @@ function switchTab(t){
   const ss=document.getElementById('schnellscan-btn');
   if(ss) ss.style.display=isDoc?'none':'';
   if(isDoc) document.getElementById('txt').focus();
+  localStorage.setItem('mw-tab',t);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -5164,6 +5173,7 @@ function toggleRightPanel(){
   const collapsed=p.classList.toggle('collapsed');
   btn.textContent=collapsed?'▶':'◀';
   btn.title=collapsed?'Seitenleiste einblenden':'Seitenleiste ausblenden';
+  localStorage.setItem('mw-sidebar-collapsed',collapsed?'1':'0');
 }
 
 function resetMarginToFormatDefault(axis){
@@ -6102,7 +6112,6 @@ async function resetAccount(){
   ensurePages(1);
   buildGrid();
   refreshChar();
-  switchTab('doc');
   document.querySelectorAll('input[type=range]').forEach(syncPct);
   loadSettings();
   // Apply page dimensions and snap line spacing (for first-visit users who have no
@@ -6112,6 +6121,28 @@ async function resetAccount(){
   _snapTextToFormatGrid();
   renderCustomColors();
   requestAnimationFrame(fitPageToView);
+
+  // ── Restore persisted UI state ──────────────────────────────────────────
+  // Tab (default: 'doc')
+  switchTab(localStorage.getItem('mw-tab')||'doc');
+
+  // Sidebar collapsed state
+  if(localStorage.getItem('mw-sidebar-collapsed')==='1'){
+    const _sp=document.getElementById('panel-right');
+    const _sb=document.getElementById('right-toggle');
+    if(_sp){_sp.classList.add('collapsed');}
+    if(_sb){_sb.textContent='▶';_sb.title='Seitenleiste einblenden';}
+  }
+
+  // Text — restore and trigger a render; after the first render frame, jump to saved page
+  const _savedTxt=localStorage.getItem('mw-txt');
+  if(_savedTxt){
+    document.getElementById('txt').value=_savedTxt;
+    schedRender();
+    // Give the render loop time to process and create all pages, then jump
+    const _savedPg=parseInt(localStorage.getItem('mw-page')||'0',10)||0;
+    if(_savedPg>0) setTimeout(()=>jumpToPage(_savedPg), 150);
+  }
 
   // ── PINCH-TO-ZOOM (touch) ─────────────────────────────
   (function(){
@@ -6136,6 +6167,9 @@ async function resetAccount(){
   if(ci) ci.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addCustomChar();}});
   loadUnknownPref();
   document.getElementById('txt').addEventListener('input',schedUnknownCheck);
+  document.getElementById('txt').addEventListener('input',()=>{
+    localStorage.setItem('mw-txt',document.getElementById('txt').value);
+  });
 
   document.getElementById('txt').addEventListener('paste',e=>{
     const raw=e.clipboardData.getData('text/plain');
@@ -6146,6 +6180,7 @@ async function resetAccount(){
       const s=ta.selectionStart, en=ta.selectionEnd;
       ta.value=ta.value.slice(0,s)+clean+ta.value.slice(en);
       ta.selectionStart=ta.selectionEnd=s+clean.length;
+      localStorage.setItem('mw-txt',ta.value);
       schedRender();
       showToast('Markdown-Formatierung wurde entfernt ✓');
     }

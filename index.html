@@ -2006,7 +2006,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         <i data-lucide="x" style="width:15px;height:15px"></i>
       </button>
     </div>
-    <div class="pexp-hint">Seite als transparentes PNG auf GoodNotes ziehen (Drag &amp; Drop) oder antippen zum Herunterladen als PNG.</div>
+    <div class="pexp-hint">iPad: Bild <strong>gedrückt halten</strong> → zu GoodNotes ziehen. Antippen zum Herunterladen als PNG.</div>
     <div class="pexp-grid" id="pexp-grid"></div>
   </div>
 </div>
@@ -4355,46 +4355,23 @@ function openPageExportModal(){
     exp.width=PAGE_W*2; exp.height=PAGE_H*2;
     exp.getContext('2d').drawImage(p.inkCv,0,0,PAGE_W*2,PAGE_H*2);
 
-    // Use <img> not <canvas>: iPadOS Safari provides <img> src to drop targets natively.
-    // The img is displayed at thumbnail size (tw×th) but its src is the full-res PNG.
+    // <img> with blob-URL src — the browser/OS handles drag natively.
+    // On iPadOS: long-press the image, then drag to GoodNotes. The OS passes the
+    // actual PNG binary directly — no JavaScript dragstart handler needed or wanted
+    // (adding one causes Safari to intercept the blob-URL as a page navigation instead).
+    // On desktop: default browser image drag copies the src URL; click downloads.
     const thumb=document.createElement('img');
     thumb.width=tw; thumb.height=th;
-    thumb.style.cssText='border-radius:4px;display:block;cursor:grab';
-    thumb.draggable=true;
-    thumb.title=`Seite ${pg+1} – ziehen oder antippen zum PNG-Download`;
+    thumb.style.cssText='border-radius:4px;display:block;cursor:grab;-webkit-touch-callout:default';
+    thumb.title=`Seite ${pg+1} – gedrückt halten & zu GoodNotes ziehen, oder antippen zum Herunterladen`;
     thumb.alt=`Seite ${pg+1}`;
 
-    // Pre-compute PNG blob async so raw bytes are ready before the drag starts
+    // Set blob-URL as src — this is what the OS hands to GoodNotes on drag
     exp.toBlob(blob=>{
       if(!blob) return;
       dragBlob=blob;
-      thumb.src=URL.createObjectURL(blob); // efficient blob-URL for display
+      thumb.src=URL.createObjectURL(blob);
     },'image/png');
-
-    thumb.addEventListener('dragstart',e=>{
-      e.dataTransfer.effectAllowed='copy';
-      // Resolve blob — use pre-computed if ready, else create synchronously
-      const blob=dragBlob||null;
-      const _setup=(b)=>{
-        const bu=URL.createObjectURL(b);
-        // 1) Try File via items API (Chrome, modern Safari) — GoodNotes gets raw bytes
-        try{
-          e.dataTransfer.items.add(new File([b],fname,{type:'image/png'}));
-          // blob-URL (never data-URL) as safe fallback for apps that read text/uri-list
-          try{e.dataTransfer.setData('text/uri-list',bu);}catch(_){}
-          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
-        }catch(_){
-          // 2) items API unsupported (older Safari): blob-URL avoids base64-text crash
-          e.dataTransfer.setData('text/uri-list',bu);
-          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
-        }
-      };
-      if(blob){
-        _setup(blob);
-      } else {
-        try{const f=_dataURLtoFile(exp.toDataURL('image/png'),fname);if(f)_setup(f);}catch(_){}
-      }
-    });
 
     // Click → download transparent PNG
     thumb.addEventListener('click',()=>exportPagePNG(pg));

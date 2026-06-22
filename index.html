@@ -3081,16 +3081,28 @@ function ensurePages(n){
       const tmp=document.createElement('canvas');tmp.width=PAGE_W;tmp.height=PAGE_H;
       const ctx2=tmp.getContext('2d');ctx2.drawImage(inkCv,0,0);
       const fname=`magicwrite_p${pg+1}.png`;
-      // Use raw File bytes — GoodNotes & desktop both need binary, NOT a data-URL string.
-      // data-URL in text/uri-list causes GoodNotes to crash / insert base64 text.
+      // 1) Try File via items API (Chrome, modern Safari) — GoodNotes gets raw bytes
       try{
         const f=_dataURLtoFile(tmp.toDataURL('image/png'),fname);
         if(f){
           e.dataTransfer.items.add(f);
-          // Desktop-Chrome: DownloadURL with a blob-URL (not data-URL) for "save to disk"
-          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(f)}`);}catch(_){}
+          const bu=URL.createObjectURL(f);
+          // Use blob-URL (never data-URL) so fallback readers get a URL, not base64 text
+          try{e.dataTransfer.setData('text/uri-list',bu);}catch(_){}
+          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
         }
-      }catch(_){}
+      }catch(_){
+        // 2) items API not supported (older Safari): blob-URL only — avoids the
+        //    data-URL-as-plain-text crash in GoodNotes
+        try{
+          const f2=_dataURLtoFile(tmp.toDataURL('image/png'),fname);
+          if(f2){
+            const bu=URL.createObjectURL(f2);
+            e.dataTransfer.setData('text/uri-list',bu);
+            try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
+          }
+        }catch(_){}
+      }
     });
     const gnBtn=document.createElement('button');
     gnBtn.className='page-exp-btn';gnBtn.title='GoodNotes PDF (transparent) herunterladen';
@@ -4361,26 +4373,26 @@ function openPageExportModal(){
 
     thumb.addEventListener('dragstart',e=>{
       e.dataTransfer.effectAllowed='copy';
-      // Always pass raw binary File — never a data-URL string.
-      // data-URL in text/uri-list / DownloadURL causes GoodNotes to crash or
-      // insert the base64 string as plain text instead of an image.
-      const useBlob = dragBlob || null;
-      if(useBlob){
+      // Resolve blob — use pre-computed if ready, else create synchronously
+      const blob=dragBlob||null;
+      const _setup=(b)=>{
+        const bu=URL.createObjectURL(b);
+        // 1) Try File via items API (Chrome, modern Safari) — GoodNotes gets raw bytes
         try{
-          const f=new File([useBlob],fname,{type:'image/png'});
-          e.dataTransfer.items.add(f);
-          // Desktop-Chrome only: DownloadURL with blob-URL for "drag to desktop" save
-          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(useBlob)}`);}catch(_){}
-        }catch(_){}
+          e.dataTransfer.items.add(new File([b],fname,{type:'image/png'}));
+          // blob-URL (never data-URL) as safe fallback for apps that read text/uri-list
+          try{e.dataTransfer.setData('text/uri-list',bu);}catch(_){}
+          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
+        }catch(_){
+          // 2) items API unsupported (older Safari): blob-URL avoids base64-text crash
+          e.dataTransfer.setData('text/uri-list',bu);
+          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${bu}`);}catch(_){}
+        }
+      };
+      if(blob){
+        _setup(blob);
       } else {
-        // Blob not ready yet — convert synchronously as fallback
-        try{
-          const f=_dataURLtoFile(exp.toDataURL('image/png'),fname);
-          if(f){
-            e.dataTransfer.items.add(f);
-            try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(f)}`);}catch(_){}
-          }
-        }catch(_){}
+        try{const f=_dataURLtoFile(exp.toDataURL('image/png'),fname);if(f)_setup(f);}catch(_){}
       }
     });
 

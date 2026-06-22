@@ -3080,12 +3080,17 @@ function ensurePages(n){
       e.dataTransfer.effectAllowed='copy';
       const tmp=document.createElement('canvas');tmp.width=PAGE_W;tmp.height=PAGE_H;
       const ctx2=tmp.getContext('2d');ctx2.drawImage(inkCv,0,0);
-      const url=tmp.toDataURL('image/png');
-      // Provide a real File object so iPadOS/GoodNotes accepts the drop
       const fname=`magicwrite_p${pg+1}.png`;
-      try{const f=_dataURLtoFile(url,fname);if(f)e.dataTransfer.items.add(f);}catch(_){}
-      e.dataTransfer.setData('text/uri-list',url);
-      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${url}`);}catch(_){}
+      // Use raw File bytes — GoodNotes & desktop both need binary, NOT a data-URL string.
+      // data-URL in text/uri-list causes GoodNotes to crash / insert base64 text.
+      try{
+        const f=_dataURLtoFile(tmp.toDataURL('image/png'),fname);
+        if(f){
+          e.dataTransfer.items.add(f);
+          // Desktop-Chrome: DownloadURL with a blob-URL (not data-URL) for "save to disk"
+          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(f)}`);}catch(_){}
+        }
+      }catch(_){}
     });
     const gnBtn=document.createElement('button');
     gnBtn.className='page-exp-btn';gnBtn.title='GoodNotes PDF (transparent) herunterladen';
@@ -4356,14 +4361,27 @@ function openPageExportModal(){
 
     thumb.addEventListener('dragstart',e=>{
       e.dataTransfer.effectAllowed='copy';
-      // Primary path: raw File bytes — iPadOS GoodNotes & desktop both accept this
-      if(dragBlob){
-        try{e.dataTransfer.items.add(new File([dragBlob],fname,{type:'image/png'}));}catch(_){}
+      // Always pass raw binary File — never a data-URL string.
+      // data-URL in text/uri-list / DownloadURL causes GoodNotes to crash or
+      // insert the base64 string as plain text instead of an image.
+      const useBlob = dragBlob || null;
+      if(useBlob){
+        try{
+          const f=new File([useBlob],fname,{type:'image/png'});
+          e.dataTransfer.items.add(f);
+          // Desktop-Chrome only: DownloadURL with blob-URL for "drag to desktop" save
+          try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(useBlob)}`);}catch(_){}
+        }catch(_){}
+      } else {
+        // Blob not ready yet — convert synchronously as fallback
+        try{
+          const f=_dataURLtoFile(exp.toDataURL('image/png'),fname);
+          if(f){
+            e.dataTransfer.items.add(f);
+            try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${URL.createObjectURL(f)}`);}catch(_){}
+          }
+        }catch(_){}
       }
-      // Desktop fallback: data URL via DownloadURL / text/uri-list
-      const durl=exp.toDataURL('image/png');
-      e.dataTransfer.setData('text/uri-list',durl);
-      try{e.dataTransfer.setData('DownloadURL',`image/png:${fname}:${durl}`);}catch(_){}
     });
 
     // Click → download transparent PNG

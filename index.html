@@ -2237,7 +2237,12 @@ const N = {
     else if(isLower)     xFrac=0.60;
     else                 xFrac=0.72; // punctuation, symbols, custom chars
 
-    const scX=(this.W*xFrac)/rw;
+    // Cap scX so inherently narrow glyphs (1, I, 7, …) aren't amplified.
+    // A narrow "1" might be only 30 px wide; without the cap scX = 85/30 ≈ 2.8×
+    // which turns the tiniest drawing tilt into an obvious skew.
+    // sy × 2.5 allows up to 2.5× horizontal widening relative to natural proportions;
+    // wide glyphs still use xFrac because that's smaller.
+    const scX=Math.min((this.W*xFrac)/rw, sy*2.5);
     const sw=rw*scX;
     const ox=(this.W-sw)/2;
 
@@ -2338,13 +2343,7 @@ class GlyphStore {
   add(ch,strokes){
     const n=N.normalize(strokes,ch);
     if(!this.g[ch]) this.g[ch]=[];
-    // Mid-line symbols: always replace all variants so old baseline-anchored
-    // scans don't persist alongside newly centered ones.
-    if(_MID_LINE_CHARS.includes(ch)){
-      this.g[ch]=[{strokes:n,aw:N.advance(n)}];
-    } else {
-      this.g[ch].push({strokes:n,aw:N.advance(n)});
-    }
+    this.g[ch].push({strokes:n,aw:N.advance(n)});
   }
   get(ch){return this.g[ch]||null}
   has(ch){return !!(this.g[ch]&&this.g[ch].length)}
@@ -2353,14 +2352,28 @@ class GlyphStore {
   toJSON(){return JSON.stringify({_v:2,g:this.g})}
   fromJSON(s){
     const d=JSON.parse(s);
+    let incoming;
     if(d&&typeof d==='object'&&d._v===2){
-      this.g=d.g;
+      incoming=d.g||{};
       this._needsMigration=false;
     } else {
       // Legacy format (v1): glyph object stored directly.
-      this.g=d;
+      incoming=d||{};
       this._needsMigration=true;
     }
+    // Merge strategy: never throw away local variants.
+    // For each character keep whichever side has MORE variants.
+    // This means Firebase / IndexedDB can never silently overwrite locally-added
+    // variants that haven't been uploaded yet.
+    const existing=this.g||{};
+    const merged={};
+    const allKeys=new Set([...Object.keys(incoming),...Object.keys(existing)]);
+    for(const ch of allKeys){
+      const inc=incoming[ch]||[];
+      const loc=existing[ch]||[];
+      merged[ch]=loc.length>=inc.length?loc:inc;
+    }
+    this.g=merged;
     this._migrateMidLine();
   }
   // One-time migration: mid-line chars that were stored with old bounding-box
@@ -3528,7 +3541,7 @@ function advanceScanQueue(){
 // ═══════════════════════════════════════════════════════════
 // RECORDING ACTIONS
 // ═══════════════════════════════════════════════════════════
-function saveStroke(){
+async function saveStroke(){
   const sd=recorder.getData();
   if(!sd.length){showToast('Zuerst ein Zeichen zeichnen!');return;}
   const ch=curCustomIdx>=0?customChars[curCustomIdx]:CHARS[charIdx];
@@ -3542,14 +3555,22 @@ function saveStroke(){
   store.add(ch,sd);
   recorder.clear();
   if(curCustomIdx>=0){refreshCustomChar();buildCustomGrid();}else{refreshChar();}
-  persistProfile(); // saves locally immediately; cloud sync follows below
+  await persistProfile(); // await so IndexedDB write completes before any async code runs
   schedRender();
   // 10-second debounce for manual tab edits — rapid changes extend the wait
   scheduleManualSync();
+  const varCount = store.get(ch).length;
   if(scanQueue.length>0){
-    advanceScanQueue();
+    // Auto-advance to next queue character only when saving the VERY FIRST variant.
+    // For additional variants the user stays on the same character and can keep
+    // drawing more; they press Next (→) manually when they are done.
+    if(varCount <= 1){
+      advanceScanQueue();
+    } else {
+      showToast(`„${ch}" – ${varCount} Varianten gespeichert (→ für nächstes Zeichen)`);
+    }
   } else {
-    showToast(`„${ch}" gespeichert – ${store.get(ch).length} Variante${store.get(ch).length>1?'n':''}`);
+    showToast(`„${ch}" gespeichert – ${varCount} Variante${varCount>1?'n':''}`);
   }
 }
 function clearRec(){recorder.clear()}
@@ -5430,6 +5451,17 @@ function subscribeToFirebase(){
     const data = snap.val();
     if(!data) return;
     if(data._session === SESSION_ID) return; // our own write, ignore
+
+    // ── Protect local glyphs while the user is actively scanning ──
+    // If we have pending local glyph changes (not yet uploaded), a real-time
+    // Firebase event must not overwrite the in-memory store — our upcoming
+    // pushToFirebase() will upload the authoritative local state.
+    if(_dirty.glyphs && data.glyphs !== undefined){
+      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
+      applyFirebaseData(dataWithoutGlyphs, false);
+      setSyncStatus('synced');
+      return;
+    }
 
     // ── Protect local glyphs: never overwrite with fewer/empty cloud glyphs ──
     const localCount = Object.keys(store.g || {}).length;

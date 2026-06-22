@@ -2825,8 +2825,8 @@ const PAGE_FORMATS=[
   {key:'custom',   name:'Angepasst',          portW:595, portH:842},
 ];
 
-let currentPageFormat='a4', currentOrientation='portrait';
-let _fmtPendingKey='a4', _fmtPendingOri='portrait';
+let currentPageFormat='gn-std', currentOrientation='portrait';
+let _fmtPendingKey='gn-std', _fmtPendingOri='portrait';
 let _linOverride=false; // true once user manually picks a paper style via setLin()
 
 function openFormatPicker(){
@@ -3054,8 +3054,8 @@ function updateFmtToolbarLabel(){
 // ═══════════════════════════════════════════════════════════
 // PAGES / DOCUMENT CANVAS
 // ═══════════════════════════════════════════════════════════
-let PAGE_W=794, PAGE_H=1123;
-let pagesData=[], curPageIdx=0, currentLin='ruled';
+let PAGE_W=607, PAGE_H=784; // GoodNotes Standard portrait default (455×588pt @ 96dpi)
+let pagesData=[], curPageIdx=0, currentLin='gn-lined';
 
 function ensurePages(n){
   const scroll=document.getElementById('doc-inner');
@@ -6095,6 +6095,11 @@ async function resetAccount(){
   switchTab('doc');
   document.querySelectorAll('input[type=range]').forEach(syncPct);
   loadSettings();
+  // Apply page dimensions and snap line spacing (for first-visit users who have no
+  // saved cookie these are not applied inside loadSettings — do it explicitly here).
+  _applyPageDimensions();
+  updateFmtToolbarLabel();
+  _snapTextToFormatGrid();
   renderCustomColors();
   requestAnimationFrame(fitPageToView);
 

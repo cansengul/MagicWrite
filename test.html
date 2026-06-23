@@ -2202,6 +2202,25 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         </button>
       </div>
 
+      <!-- Firebase Rules Hinweis -->
+      <div id="admin-rules-hint" style="display:none;background:rgba(255,170,0,0.10);border:1px solid rgba(255,170,0,0.35);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--ink)">
+        <div style="font-weight:700;color:#BB8800;margin-bottom:6px">⚠ Firebase-Regel erforderlich</div>
+        <div style="margin-bottom:8px;color:var(--ink-soft)">Damit Admins alle Nutzer lesen können, füge diese Regel in der <b>Firebase Console → Realtime Database → Regeln</b> ein (ersetze deine bestehende Regel):</div>
+        <div style="background:#050505;border-radius:6px;padding:10px;font-family:'DM Mono','Courier New',monospace;font-size:10px;color:#FFD966;line-height:1.7;overflow-x:auto;white-space:pre">{
+  "rules": {
+    "users": {
+      ".read": "auth != null && auth.uid === 'WgbN6rPqHZQgNezAM1pxQ1oWRt03'",
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}</div>
+        <div style="margin-top:8px;font-size:10px;color:var(--ink-soft)">Nach dem Speichern der Regel funktioniert der Admin-Zugriff sofort.</div>
+        <button onclick="document.getElementById('admin-rules-hint').style.display='none'" style="margin-top:8px;background:none;border:none;cursor:pointer;font-size:11px;color:var(--ink-soft);text-decoration:underline">Ausblenden</button>
+      </div>
+
       <!-- Live Log -->
       <div class="admin-section-title">Live Log</div>
       <div class="admin-log" id="admin-log">Bereit. Wähle eine Aktion…</div>
@@ -2281,8 +2300,8 @@ const FIREBASE_CONFIG = {
 // Füge hier die Firebase UIDs der Admins ein.
 // UID findest du in Firebase Console → Authentication → Users → UID-Spalte.
 const ADMIN_UIDS = [
-  // Beispiel: "aBcDeFgHiJkLmNoPqRsTuVwXyZ123456"
-   "WgbN6rPqHZQgNezAM1pxQ1oWRt03"
+  "WgbN6rPqHZQgNezAM1pxQ1oWRt03",
+  // Weitere Admins hier eintragen
 ];
 
 // ── GLYPH LIMIT ─────────────────────────────────────────────
@@ -5179,7 +5198,6 @@ function initFirebase(){
       updateAuthUI(user);
       updateAccountSection();
       if(user){
-        writeUserProfile(user);
         checkAdminRole(user);
       } else {
         closeAdminPanel();
@@ -5201,6 +5219,8 @@ function initFirebase(){
           // overwrite pending local changes before the merge modal can appear.
           await loadFromFirebase();
           subscribeToFirebase();
+          // Write profile AFTER verification confirmed and DB access granted
+          writeUserProfile(fbAuth.currentUser || user);
         }
       } else {
         unsubscribeFromFirebase();
@@ -6523,9 +6543,17 @@ async function adminRefreshStats(){
     if(delEl) delEl.textContent = _adminDeletedCount;
     const lastEl = document.getElementById('adm-stat-last');
     if(lastEl) lastEl.textContent = new Date().toLocaleTimeString('de-DE');
+    const hint = document.getElementById('admin-rules-hint');
+    if(hint) hint.style.display = 'none';
     adminLog(`${count} Nutzer in der Realtime DB gefunden`, 'ok');
   }catch(err){
-    adminLog('Fehler beim Laden: ' + (err.message || err.code), 'err');
+    if(err.code === 'PERMISSION_DENIED' || (err.message||'').toLowerCase().includes('permission')){
+      adminLog('Zugriff verweigert — Firebase-Regel fehlt (siehe Hinweis oben)', 'err');
+      const hint = document.getElementById('admin-rules-hint');
+      if(hint) hint.style.display = 'block';
+    } else {
+      adminLog('Fehler: ' + (err.message || err.code), 'err');
+    }
   }
 }
 
@@ -6536,9 +6564,11 @@ async function adminCheckUsers(){
   if(!fbDb){ adminLog('Fehler: Firebase nicht bereit','err'); return; }
   document.getElementById('admin-log').innerHTML = '';
   adminLog('Starte Benutzerprüfung…', 'info');
-  adminLog('ℹ Hinweis: Auth-Enumeration erfordert Admin SDK (Backend). Prüfe nur DB-Einträge.', 'warn');
+  adminLog('ℹ Hinweis: Auth-Enumeration erfordert Admin SDK. Prüfe nur DB-Einträge.', 'warn');
   try{
     const snap = await fbDb.ref('users').once('value');
+    const hint = document.getElementById('admin-rules-hint');
+    if(hint) hint.style.display = 'none';
     const data = snap.val() || {};
     const uids = Object.keys(data);
     adminLog(`${uids.length} DB-Einträge gefunden`, 'info');
@@ -6556,14 +6586,20 @@ async function adminCheckUsers(){
     if(noProfile === 0){
       adminLog('Alle DB-Einträge haben Profil-Daten ✓', 'ok');
     } else {
-      adminLog(`${noProfile} Einträge ohne Profil (ältere Konten, kein Problem)`, 'warn');
+      adminLog(`${noProfile} Einträge ohne Profil (ältere Konten oder noch kein Login nach Update)`, 'warn');
     }
     const el = document.getElementById('adm-stat-total');
     if(el) el.textContent = uids.length;
     const lastEl = document.getElementById('adm-stat-last');
     if(lastEl) lastEl.textContent = new Date().toLocaleTimeString('de-DE');
   }catch(err){
-    adminLog('Fehler: ' + (err.message || err.code), 'err');
+    if(err.code === 'PERMISSION_DENIED' || (err.message||'').toLowerCase().includes('permission')){
+      adminLog('Zugriff verweigert — Firebase-Regel fehlt (siehe Hinweis oben)', 'err');
+      const hint = document.getElementById('admin-rules-hint');
+      if(hint) hint.style.display = 'block';
+    } else {
+      adminLog('Fehler: ' + (err.message || err.code), 'err');
+    }
   }
 }
 
@@ -6573,6 +6609,8 @@ async function adminShowAllUsers(){
   adminLog('Lade alle Nutzer aus DB…', 'info');
   try{
     const snap = await fbDb.ref('users').once('value');
+    const hint = document.getElementById('admin-rules-hint');
+    if(hint) hint.style.display = 'none';
     const data = snap.val() || {};
     const uids = Object.keys(data);
     const list  = document.getElementById('admin-user-list');
@@ -6613,7 +6651,13 @@ async function adminShowAllUsers(){
     const elTotal = document.getElementById('adm-stat-total');
     if(elTotal) elTotal.textContent = uids.length;
   }catch(err){
-    adminLog('Fehler beim Laden: ' + (err.message || err.code), 'err');
+    if(err.code === 'PERMISSION_DENIED' || (err.message||'').toLowerCase().includes('permission')){
+      adminLog('Zugriff verweigert — Firebase-Regel fehlt (siehe Hinweis oben)', 'err');
+      const hint = document.getElementById('admin-rules-hint');
+      if(hint) hint.style.display = 'block';
+    } else {
+      adminLog('Fehler beim Laden: ' + (err.message || err.code), 'err');
+    }
   }
 }
 
@@ -6652,34 +6696,40 @@ function closeUserDashboard(){
 async function loadUserDashboard(showToastOnLoad){
   if(!fbUser) return;
   const isAdmin = ADMIN_UIDS.length > 0 && ADMIN_UIDS.includes(fbUser.uid);
-  // Populate from Auth immediately
   const nameStr = fbUser.displayName || fbUser.email?.split('@')[0] || 'Nutzer';
   const initial  = nameStr.charAt(0).toUpperCase();
   const el = id => document.getElementById(id);
+
+  // ── Always fill from Firebase Auth metadata immediately ────
+  const fmt = ts => {
+    if(!ts) return '–';
+    const d = new Date(ts);
+    return isNaN(d) ? ts : d.toLocaleString('de-DE');
+  };
+  const createdAuth  = fbUser.metadata?.creationTime   ? fmt(fbUser.metadata.creationTime)   : '–';
+  const lastAuthTime = fbUser.metadata?.lastSignInTime ? fmt(fbUser.metadata.lastSignInTime) : '–';
+
   if(el('udash-avatar'))    el('udash-avatar').textContent   = initial;
   if(el('udash-name'))      el('udash-name').textContent     = nameStr;
   if(el('udash-role'))      el('udash-role').textContent     = isAdmin ? '🛡️ Admin' : 'Nutzer';
   if(el('udash-email'))     el('udash-email').textContent    = fbUser.email || '–';
   if(el('udash-uid'))       el('udash-uid').textContent      = fbUser.uid;
-  if(el('udash-created'))   el('udash-created').textContent  = '…';
-  if(el('udash-lastlogin')) el('udash-lastlogin').textContent = '…';
-  // Try to load richer data from DB
+  if(el('udash-created'))   el('udash-created').textContent  = createdAuth;
+  if(el('udash-lastlogin')) el('udash-lastlogin').textContent = lastAuthTime;
+
+  // ── Optionally enrich from DB profile (more precise lastLogin) ─
   if(fbDb){
     try{
       const snap = await fbDb.ref(`users/${fbUser.uid}/profile`).once('value');
       const p = snap.val();
       if(p){
-        if(el('udash-created'))    el('udash-created').textContent   = p.createdAt   ? new Date(p.createdAt).toLocaleString('de-DE')  : '–';
-        if(el('udash-lastlogin'))  el('udash-lastlogin').textContent  = p.lastLogin   ? new Date(p.lastLogin).toLocaleString('de-DE')   : '–';
-        if(el('udash-name') && p.name) el('udash-name').textContent  = p.name;
-      } else {
-        if(el('udash-created'))    el('udash-created').textContent   = 'Nicht gespeichert';
-        if(el('udash-lastlogin'))  el('udash-lastlogin').textContent  = 'Nicht gespeichert';
+        if(el('udash-created') && p.createdAt)   el('udash-created').textContent   = fmt(p.createdAt);
+        if(el('udash-lastlogin') && p.lastLogin) el('udash-lastlogin').textContent  = fmt(p.lastLogin);
+        if(el('udash-name') && p.name)           el('udash-name').textContent       = p.name;
       }
       if(showToastOnLoad) showToast('Profil geladen ✓');
-    }catch(err){
-      if(el('udash-created'))    el('udash-created').textContent   = 'Fehler beim Laden';
-      if(el('udash-lastlogin'))  el('udash-lastlogin').textContent  = 'Fehler beim Laden';
+    }catch(_){
+      // DB fallback failed — Auth metadata already shown above, no error needed
     }
   }
 }

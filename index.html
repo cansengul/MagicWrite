@@ -2,8 +2,25 @@
 <html lang="de" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>MagicWrite</title>
+
+<!-- PWA: installable app metadata -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1C1C1E" media="(prefers-color-scheme: dark)">
+
+<!-- iOS home screen support -->
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MagicWrite">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Icons -->
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <!-- Firebase SDKs (compat) -->
@@ -6281,6 +6298,17 @@ async function doChangePassword(){
   }finally{
     if(btn) btn.disabled = false;
   }
+}
+</script>
+
+<!-- PWA: register service worker for offline/installable use -->
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(err => {
+      console.warn('MagicWrite: Service Worker Registrierung fehlgeschlagen.', err);
+    });
+  });
 }
 </script>
 </body>

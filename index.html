@@ -76,6 +76,20 @@
 <link rel="apple-touch-startup-image" media="(device-width: 1024px) and (device-height: 768px) and (-webkit-device-pixel-ratio: 2) and (orientation: landscape)" href="./icons/splash-2048x1536-landscape.png">
 <meta name="mobile-web-app-capable" content="yes">
 
+<!-- Capture beforeinstallprompt as early as possible (it fires once, early
+     in the page lifecycle). Stored globally so the install-modal IIFE can
+     read it regardless of when it runs. -->
+<script>
+window.addEventListener('beforeinstallprompt', function(e){
+  e.preventDefault();
+  window._mwDeferredPrompt = e;
+});
+window.addEventListener('appinstalled', function(){
+  window._mwDeferredPrompt = null;
+  localStorage.setItem('mw-install-shown','1');
+});
+</script>
+
 <!-- Icons / favicon -->
 <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
@@ -1313,6 +1327,69 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   font-size:8px;color:var(--warn);font-weight:600;
 }
 .import-btns{display:flex;gap:8px;margin-top:2px}
+
+/* ── PWA INSTALL MODAL ── */
+#pwa-install-modal{
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.46);
+  z-index:3500;display:none;
+  align-items:center;justify-content:center;
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+#pwa-install-modal.open{display:flex}
+.pwa-card{
+  background:var(--paper-warm);
+  border-radius:20px;
+  padding:28px 24px 20px;
+  width:min(92vw,360px);
+  display:flex;flex-direction:column;gap:16px;
+  box-shadow:var(--shadow-lg);
+  animation:slideUp .24s ease;
+}
+.pwa-benefits{
+  display:flex;flex-direction:column;gap:7px;
+  background:var(--paper);border-radius:var(--r-sm);
+  padding:12px 14px;border:0.5px solid var(--ui-border);
+}
+.pwa-benefit-row{
+  display:flex;align-items:center;gap:9px;
+  font-size:13px;color:var(--ink-soft);line-height:1.4;
+}
+.pwa-benefit-icon{
+  width:26px;height:26px;border-radius:7px;
+  background:var(--accent-lt);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:14px;
+}
+.pwa-steps{display:flex;flex-direction:column;gap:11px}
+.pwa-step{
+  display:flex;align-items:flex-start;gap:10px;
+  font-size:13px;color:var(--ink);line-height:1.5;
+}
+.pwa-step-num{
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:#fff;
+  font-size:11px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:1px;
+}
+.pwa-step-icon{
+  width:22px;height:22px;border-radius:6px;
+  background:var(--paper);border:0.5px solid var(--ui-border);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;font-size:13px;margin-top:1px;
+}
+#pwa-install-btn{
+  width:100%;padding:13px;
+  background:var(--accent);color:#fff;
+  border:none;border-radius:var(--r);
+  font-family:-apple-system,'SF Pro Text',sans-serif;
+  font-size:15px;font-weight:600;
+  cursor:pointer;transition:opacity var(--tr),transform var(--tr);
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+#pwa-install-btn:hover{opacity:0.88}
+#pwa-install-btn:active{transform:scale(0.97)}
 </style>
 </head>
 <body>
@@ -6563,6 +6640,77 @@ if('serviceWorker' in navigator){
   </button>
 </div>
 
+<!-- PWA INSTALL MODAL -->
+<div id="pwa-install-modal">
+  <div class="pwa-card">
+    <!-- Logo -->
+    <div class="login-logo">
+      <img class="logo-mark" src="./icons/logo-mark.png" alt="" width="26" height="31">
+      <span class="logo-word">MagicWrite</span>
+    </div>
+
+    <!-- Title + subtitle -->
+    <div>
+      <div class="login-title" style="margin-bottom:5px">Als App installieren</div>
+      <div class="login-desc">Füge MagicWrite deinem Home-Bildschirm hinzu – kostenlos &amp; in Sekunden.</div>
+    </div>
+
+    <!-- Benefits -->
+    <div class="pwa-benefits">
+      <div class="pwa-benefit-row">
+        <div class="pwa-benefit-icon">📶</div>
+        <span>Auch <strong>offline</strong> nutzbar – kein Internet nötig</span>
+      </div>
+      <div class="pwa-benefit-row">
+        <div class="pwa-benefit-icon">⊞</div>
+        <span>Direkt vom Home-Bildschirm öffnen</span>
+      </div>
+      <div class="pwa-benefit-row">
+        <div class="pwa-benefit-icon">▢</div>
+        <span>Vollbild ohne Browser-Leiste</span>
+      </div>
+    </div>
+
+    <!-- iOS panel -->
+    <div id="pwa-ios-panel" style="display:none">
+      <div class="login-desc" style="text-align:left;margin-bottom:12px;font-size:12px">
+        In 3 Schritten zum Home-Bildschirm hinzufügen:
+      </div>
+      <div class="pwa-steps">
+        <div class="pwa-step">
+          <div class="pwa-step-num">1</div>
+          <div>Tippe auf das <strong>Teilen-Symbol</strong>
+            <svg style="display:inline-block;vertical-align:-3px;margin:0 2px" width="14" height="16" viewBox="0 0 14 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M7 10V1M4 4l3-3 3 3M1 11v3a1 1 0 001 1h10a1 1 0 001-1v-3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            in der Safari-Menüleiste
+          </div>
+        </div>
+        <div class="pwa-step">
+          <div class="pwa-step-num">2</div>
+          <div>Scrolle und wähle <strong>„Zum Home-Bildschirm"</strong></div>
+        </div>
+        <div class="pwa-step">
+          <div class="pwa-step-num">3</div>
+          <div>Tippe oben rechts auf <strong>„Hinzufügen"</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Android / Desktop panel -->
+    <div id="pwa-prompt-panel" style="display:none">
+      <button id="pwa-install-btn" onclick="doInstallPWA()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3v13M7 11l5 5 5-5M3 18v1a2 2 0 002 2h14a2 2 0 002-2v-1" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        App installieren
+      </button>
+    </div>
+
+    <button class="login-skip" onclick="dismissInstallModal()">Nicht jetzt</button>
+  </div>
+</div>
+
 <!-- User menu dropdown – lives at body level so header overflow cannot clip it -->
 <div class="user-menu-dropdown" id="user-menu-dropdown" style="display:none">
   <button class="user-menu-item" onclick="closeUserMenu();openSettings(true)">
@@ -6572,6 +6720,103 @@ if('serviceWorker' in navigator){
     <i data-lucide="log-out" style="width:13px;height:13px"></i>Abmelden
   </button>
 </div>
+
+<script>
+// ── PWA INSTALL MODAL ─────────────────────────────────────────────────────────
+(function(){
+  // Never show when already running as installed PWA
+  var isStandalone =
+    (navigator.standalone === true) ||
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.matchMedia('(display-mode: fullscreen)').matches;
+  if(isStandalone) return;
+
+  // Never show again after user has seen it once
+  if(localStorage.getItem('mw-install-shown')) return;
+
+  // iOS detection: iPhone / iPod / iPad (including iPadOS 13+ that reports Macintosh)
+  var ua = navigator.userAgent;
+  var isIOS =
+    /iP(hone|od)/i.test(ua) ||
+    (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
+
+  // IDs of higher-priority modals that must not be obscured
+  var PRIORITY_MODALS = ['limit-modal','login-modal','merge-modal',
+                         'reauth-modal','verify-required-modal'];
+
+  function isHighPriorityModalOpen(){
+    return PRIORITY_MODALS.some(function(id){
+      var el = document.getElementById(id);
+      return el && el.classList.contains('open');
+    });
+  }
+
+  function openInstallModal(){
+    if(isHighPriorityModalOpen()) return; // defer to higher-priority overlays
+    var modal       = document.getElementById('pwa-install-modal');
+    var iosPanel    = document.getElementById('pwa-ios-panel');
+    var promptPanel = document.getElementById('pwa-prompt-panel');
+    if(!modal) return;
+    if(isIOS){
+      if(iosPanel)    iosPanel.style.display    = 'block';
+      if(promptPanel) promptPanel.style.display = 'none';
+    } else {
+      if(iosPanel)    iosPanel.style.display    = 'none';
+      if(promptPanel) promptPanel.style.display = 'block';
+    }
+    modal.classList.add('open');
+  }
+
+  window.dismissInstallModal = function(){
+    var modal = document.getElementById('pwa-install-modal');
+    if(modal) modal.classList.remove('open');
+    localStorage.setItem('mw-install-shown', '1');
+  };
+
+  window.doInstallPWA = async function(){
+    // _mwDeferredPrompt is set by the early <head> listener
+    var prompt = window._mwDeferredPrompt;
+    if(!prompt){ dismissInstallModal(); return; }
+    try{
+      await prompt.prompt();
+      await prompt.userChoice;
+    }catch(e){}
+    window._mwDeferredPrompt = null;
+    dismissInstallModal();
+  };
+
+  // Backdrop click dismisses
+  document.addEventListener('click', function(e){
+    var modal = document.getElementById('pwa-install-modal');
+    if(modal && modal.classList.contains('open') && e.target === modal){
+      dismissInstallModal();
+    }
+  });
+
+  // Show logic
+  if(isIOS){
+    // iOS: show after app paints — all iOS browsers support Add to Home Screen
+    window.addEventListener('load', function(){
+      setTimeout(openInstallModal, 1400);
+    });
+  } else {
+    // Android / Desktop: show only if browser signals installability.
+    // The early <head> listener may have already captured the event, so
+    // we check both the stored prompt and a future event.
+    function scheduleShow(){
+      setTimeout(openInstallModal, 1400);
+    }
+    if(window._mwDeferredPrompt){
+      // Event already fired before this script ran — show after load
+      if(document.readyState === 'complete'){ scheduleShow(); }
+      else { window.addEventListener('load', scheduleShow); }
+    } else {
+      // Event hasn't fired yet — wait for it
+      window.addEventListener('beforeinstallprompt', scheduleShow);
+    }
+  }
+})();
+</script>
 
 <script>
 (function(){

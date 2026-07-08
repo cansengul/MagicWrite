@@ -44,13 +44,30 @@ Falls du GitHub Pages noch nicht aktiviert hast: Repo-Einstellungen → **Pages*
 - **`manifest.json`**: sagt dem Betriebssystem, wie die App heißen soll,
   welches Icon sie hat und dass sie im Vollbild (`standalone`) statt im
   Browser laufen soll.
-- **`sw.js`** (Service Worker): merkt sich `index.html`, `manifest.json` und
-  die Icons im Cache, damit die App auch bei kurzzeitig fehlendem Internet
-  sofort startet. Firebase-Anfragen (Login, Datenbank) werden **nicht**
-  gecacht, damit Login und Sync immer live bleiben.
+- **`sw.js`** (Service Worker): cached beim ersten Öffnen `index.html`,
+  `manifest.json`, alle Icons **und** die externen Dateien (Google Fonts,
+  das Lucide-Icon-Skript, die drei Firebase-SDK-Skripte). Danach startet die
+  App komplett ohne Internetverbindung. Nur die eigentlichen
+  Firebase-Anfragen (Login, Datenbank-Sync) gehen weiterhin live über das
+  Netz — die brauchen zwangsläufig eine Verbindung, dein lokal gespeicherter
+  Text und die Seiten funktionieren aber auch ganz ohne WLAN/Mobilfunk.
+- **App-Icon & Favicon**: dein App-Symbol erscheint jetzt auch oben links in
+  der App neben "MagicWrite" sowie als Browser-Tab-Icon (Favicon).
+- **Kein Browser-Zoom mehr**: Pinch-to-Zoom und Doppeltipp-Zoom sind für die
+  gesamte App deaktiviert. Nur im Tab **Dokument** kannst du weiterhin mit
+  zwei Fingern oder den +/−-Knöpfen in die Seiten hinein- und
+  herauszoomen — das ist die eingebaute Dokumenten-Zoomfunktion der App,
+  keine Browserfunktion.
 - **`<head>`**: ein paar zusätzliche Meta-Tags (Icon, Statusleisten-Farbe,
   "installierbar"-Hinweis für iOS/Android). Am Funktionsverhalten der App
   selbst wurde nichts verändert.
+
+## Wichtig: einmal online öffnen
+
+Damit der Service Worker alle externen Dateien (Schriften, Icons, Firebase)
+für die Offline-Nutzung cachen kann, muss die App **einmal mit
+Internetverbindung** geöffnet werden (z. B. direkt nach der Installation).
+Danach funktioniert sie auch ganz ohne Netz.
 
 ## Wenn du die App später aktualisierst
 

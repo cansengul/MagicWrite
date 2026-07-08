@@ -2,7 +2,7 @@
 <html lang="de" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>MagicWrite</title>
 
 <!-- PWA: installable app metadata -->
@@ -17,9 +17,11 @@
 <meta name="apple-mobile-web-app-title" content="MagicWrite">
 <meta name="mobile-web-app-capable" content="yes">
 
-<!-- Icons -->
+<!-- Icons / favicon -->
 <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
+<link rel="shortcut icon" type="image/png" href="./icons/favicon-32.png">
 
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
@@ -83,6 +85,9 @@ html,body{
   background:var(--ui-bg);color:var(--ink);
   overflow:hidden;
   -webkit-font-smoothing:antialiased;
+  /* Block browser pinch/double-tap zoom outside the document canvas;
+     the document page itself has its own zoom (see #doc-scroll below). */
+  touch-action:manipulation;
 }
 /* ── NO TEXT SELECTION ANYWHERE ── */
 *{
@@ -115,6 +120,7 @@ header{
   color:var(--header-text);
   display:flex;align-items:center;gap:6px;
 }
+.logo-icon{width:20px;height:20px;border-radius:6px;display:block;flex-shrink:0}
 .logo-dot{width:7px;height:7px;background:var(--accent);border-radius:50%}
 .vsep{width:0.5px;height:18px;background:var(--ui-border);margin:0 2px}
 
@@ -421,6 +427,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 /* ── MULTI-PAGE SCROLL ── */
 .doc-scroll{
   flex:1;overflow:auto;background:var(--doc-bg);
+  /* Custom pinch-to-zoom is handled in JS for this element only. */
+  touch-action:pan-x pan-y;
 }
 #doc-inner{
   display:flex;flex-direction:column;align-items:center;gap:28px;
@@ -1173,7 +1181,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 <!-- HEADER -->
 <header>
-  <div class="logo"><span class="logo-dot"></span>MagicWrite</div>
+  <div class="logo"><img class="logo-icon" src="./icons/icon-192.png" alt="" width="20" height="20"><span class="logo-dot"></span>MagicWrite</div>
   <div class="vsep"></div>
   <div class="htabs">
     <button class="htab" id="tab-rec" onclick="switchTab('rec')">
@@ -1839,7 +1847,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   <div class="login-card">
 
     <!-- Header (always visible) -->
-    <div class="login-logo"><span class="login-logo-dot"></span>MagicWrite</div>
+    <div class="login-logo"><img class="logo-icon" src="./icons/icon-192.png" alt="" width="20" height="20"><span class="login-logo-dot"></span>MagicWrite</div>
 
     <!-- ▸ Screen 1: Provider picker -->
     <div id="lms-pick" class="lm-screen">

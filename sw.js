@@ -14,6 +14,7 @@ const APP_SHELL = [
   './icons/icon-512-maskable.png',
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
+  './icons/logo-mark.png',
 ];
 
 // Third-party static assets (fonts, icon lib, Firebase SDK scripts) that

@@ -23,12 +23,20 @@
 <link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
 <link rel="shortcut icon" type="image/png" href="./icons/favicon-32.png">
 
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<!-- Firebase SDKs (compat) -->
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<!-- Critical CSS is inlined first so the correct background/theme paints
+     immediately, before any network request finishes. Fonts and the
+     (large) third-party scripts below are non-blocking (preconnect +
+     defer), so the UI appears in well under a second instead of staying
+     blank/black while they download. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://www.gstatic.com">
+<link rel="preconnect" href="https://unpkg.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<!-- Lucide + Firebase are loaded further down, right before the script that
+     needs them (see before the main <script> block). Keeping them out of
+     <head> lets the page shell paint immediately instead of staying
+     blank/black while ~300KB of third-party JS downloads. -->
 <style>
 /* ═══════════════════════════════════════
    GOODNOTES / iPadOS DESIGN SYSTEM
@@ -63,45 +71,27 @@
   --shadow-page:0 4px 20px rgba(0,0,0,0.55),0 1px 4px rgba(0,0,0,0.3);
 }
 /* ── NARROW SCREENS (iPhone etc.) ── */
+/* Rather than hiding controls, the header scrolls horizontally so every
+   button stays reachable with a swipe on small screens. */
 @media (max-width:760px){
-  header{height:48px;padding:0 10px;gap:6px}
-  .logo-svg{height:19px}
-  .vsep{display:none}
-  .htabs{padding:1px;border-radius:7px}
-  .htab{padding:5px 9px;font-size:11px}
-  .htab span{display:none}
-  .hactions{gap:3px}
-  .hbtn{padding:5px 7px;font-size:12px}
-  .hbtn span{display:none}
-  .sync-badge{padding:4px 6px}
-  .sync-badge span{display:none}
-  #auth-btn{max-width:38px}
-  #auth-btn span{display:none}
-
-  /* Side panels become off-canvas drawers instead of squeezing the page */
-  #panel-left,#panel-right{
-    position:fixed;top:52px;bottom:0;z-index:300;
-    box-shadow:var(--shadow-lg);
-    transition:transform .22s ease;
+  header{
+    height:48px;padding:0 10px;gap:6px;
+    overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
   }
-  #panel-left{left:0;width:min(82vw,278px);transform:translateX(-100%)}
-  #panel-right{right:0;width:min(82vw,236px);transform:translateX(100%)}
-  #shell.show-left #panel-left{transform:translateX(0)}
-  #shell.show-right #panel-right{transform:translateX(0)}
-  #panel-right.collapsed{width:26px;transform:translateX(0);position:static;box-shadow:none}
+  header::-webkit-scrollbar{display:none}
+  .logo,.vsep,.htabs,.hactions{flex-shrink:0}
+  .logo-mark{height:19px}
+  .logo-word{font-size:15px}
+  .htab{white-space:nowrap}
+  .hbtn{white-space:nowrap}
 
-  .zoom-lbl{display:none}
-  .mobile-only{display:flex!important}
-  #panel-backdrop.show{display:block}
+  #panel-left{width:min(70vw,278px)}
+  #panel-right{width:min(46vw,236px)}
 }
 @media (max-width:760px) and (max-height:500px){
   header{height:44px}
-}
-@media (min-width:761px){
-  .mobile-only{display:none!important}
-}
-#panel-backdrop{
-  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.32);z-index:290;
 }
 
 @media (prefers-color-scheme:dark){
@@ -162,13 +152,10 @@ header{
   color:var(--header-text);
   display:flex;align-items:center;gap:6px;
 }
-.logo-svg{height:22px;width:auto;display:block;flex-shrink:0}
-.logo-svg .logo-ring{stroke:var(--ui-border2)}
-.logo-svg .logo-stroke{stroke:var(--accent)}
-.logo-svg .logo-dot-mark{fill:var(--accent)}
-.logo-svg .logo-word{
-  font-family:'Fraunces',serif;font-style:italic;font-weight:300;
-  font-size:16px;fill:var(--header-text);letter-spacing:-0.2px;
+.logo-mark{height:22px;width:auto;display:block;flex-shrink:0}
+.logo-word{
+  font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
+  font-weight:700;font-size:17px;letter-spacing:-0.4px;color:var(--header-text);
 }
 .vsep{width:0.5px;height:18px;background:var(--ui-border);margin:0 2px}
 
@@ -869,8 +856,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 .login-logo{
   display:flex;align-items:center;justify-content:center;gap:8px;
 }
-.login-logo .logo-svg{height:30px}
-.login-logo .logo-svg .logo-word{font-size:22px}
+.login-logo .logo-mark{height:30px}
+.login-logo .logo-word{font-size:22px}
 .login-title{
   font-size:18px;font-weight:700;
   font-family:-apple-system,'SF Pro Display',sans-serif;
@@ -1228,16 +1215,9 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 <!-- HEADER -->
 <header>
-  <button id="left-toggle" class="hbtn gn mobile-only" onclick="toggleLeftPanel()" title="Dokumente" style="padding:6px 8px">
-    <i data-lucide="menu" style="width:16px;height:16px"></i>
-  </button>
   <div class="logo">
-    <svg class="logo-svg" viewBox="0 0 172 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MagicWrite">
-      <circle cx="14" cy="14" r="12" class="logo-ring" fill="none" stroke-width="1.5"/>
-      <path d="M9 18.5 L18.5 9" class="logo-stroke" stroke-width="2.2" stroke-linecap="round"/>
-      <circle cx="18.5" cy="9" r="1.6" class="logo-dot-mark"/>
-      <text x="32" y="20" class="logo-word">MagicWrite</text>
-    </svg>
+    <img class="logo-mark" src="./icons/logo-mark.png" alt="" width="20" height="24">
+    <span class="logo-word">MagicWrite</span>
   </div>
   <div class="vsep"></div>
   <div class="htabs">
@@ -1300,7 +1280,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 </header>
 
 <!-- BODY -->
-<div id="panel-backdrop" onclick="closeMobilePanels()"></div>
 <div id="shell-body">
 
 <!-- LEFT PANEL (Einrichten) -->
@@ -1906,12 +1885,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
     <!-- Header (always visible) -->
     <div class="login-logo">
-      <svg class="logo-svg" viewBox="0 0 172 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MagicWrite">
-        <circle cx="14" cy="14" r="12" class="logo-ring" fill="none" stroke-width="1.5"/>
-        <path d="M9 18.5 L18.5 9" class="logo-stroke" stroke-width="2.2" stroke-linecap="round"/>
-        <circle cx="18.5" cy="9" r="1.6" class="logo-dot-mark"/>
-        <text x="32" y="20" class="logo-word">MagicWrite</text>
-      </svg>
+      <img class="logo-mark" src="./icons/logo-mark.png" alt="" width="25" height="30">
+      <span class="logo-word">MagicWrite</span>
     </div>
 
     <!-- ▸ Screen 1: Provider picker -->
@@ -2183,6 +2158,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 <div id="toast"></div>
 
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<!-- Firebase SDKs (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script>
 'use strict';
 
@@ -5258,30 +5238,12 @@ document.addEventListener('click', e => {
 });
 
 function toggleRightPanel(){
-  const shell=document.getElementById('shell');
-  if(window.innerWidth<=760){
-    const showing=shell.classList.toggle('show-right');
-    shell.classList.remove('show-left');
-    document.getElementById('panel-backdrop').classList.toggle('show',showing);
-    return;
-  }
   const p=document.getElementById('panel-right');
   const btn=document.getElementById('right-toggle');
   const collapsed=p.classList.toggle('collapsed');
   btn.textContent=collapsed?'▶':'◀';
   btn.title=collapsed?'Seitenleiste einblenden':'Seitenleiste ausblenden';
   localStorage.setItem('mw-sidebar-collapsed',collapsed?'1':'0');
-}
-function toggleLeftPanel(){
-  const shell=document.getElementById('shell');
-  const showing=shell.classList.toggle('show-left');
-  shell.classList.remove('show-right');
-  document.getElementById('panel-backdrop').classList.toggle('show',showing);
-}
-function closeMobilePanels(){
-  const shell=document.getElementById('shell');
-  shell.classList.remove('show-left','show-right');
-  document.getElementById('panel-backdrop').classList.remove('show');
 }
 
 function resetMarginToFormatDefault(axis){

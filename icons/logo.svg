@@ -1,0 +1,6 @@
+<svg viewBox="0 0 172 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MagicWrite">
+  <circle cx="14" cy="14" r="12" fill="none" stroke="#8E8E93" stroke-width="1.5"/>
+  <path d="M9 18.5 L18.5 9" stroke="#007AFF" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="18.5" cy="9" r="1.6" fill="#007AFF"/>
+  <text x="32" y="20" font-family="Fraunces, Georgia, serif" font-style="italic" font-weight="300" font-size="16" fill="#000000" letter-spacing="-0.2">MagicWrite</text>
+</svg>

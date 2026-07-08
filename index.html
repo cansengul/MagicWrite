@@ -695,13 +695,13 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 #toast.show{opacity:1}
 
 /* ── USER MENU DROPDOWN ── */
-.user-menu-wrap{position:relative;display:inline-flex}
+.user-menu-wrap{display:inline-flex}
 .user-menu-dropdown{
-  position:absolute;top:calc(100% + 6px);right:0;
+  position:fixed;
   background:var(--paper-warm);
   border:0.5px solid var(--ui-border2);
   border-radius:var(--r);box-shadow:var(--shadow-lg);
-  z-index:500;min-width:160px;
+  z-index:2000;min-width:160px;
   flex-direction:column;overflow:hidden;
 }
 .user-menu-item{
@@ -743,14 +743,13 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 /* ── EXPORT DROPDOWN ── */
 .exp-wrap{position:relative;display:inline-flex}
 .exp-menu{
-  position:absolute;top:calc(100% + 6px);right:0;
+  position:fixed;
   background:var(--paper-warm);
   border:0.5px solid var(--ui-border2);
   border-radius:var(--r);box-shadow:var(--shadow-lg);
-  z-index:500;min-width:190px;
+  z-index:2000;min-width:190px;
   display:none;flex-direction:column;overflow:hidden;
 }
-.exp-menu.open{display:flex}
 .exp-item{
   display:flex;align-items:center;gap:8px;
   padding:10px 14px;
@@ -1252,20 +1251,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
         Export
         <i data-lucide="chevron-down" style="width:11px;height:11px;opacity:0.75"></i>
       </button>
-      <div class="exp-menu" id="exp-menu">
-        <button class="exp-item" onclick="closeExportMenu();exportPNG()">
-          <i data-lucide="image" style="width:13px;height:13px"></i>PNG (Bild)
-        </button>
-        <button class="exp-item" onclick="closeExportMenu();exportPDF()">
-          <i data-lucide="file-text" style="width:13px;height:13px"></i>PDF (Drucken)
-        </button>
-        <button class="exp-item" onclick="closeExportMenu();exportGoodNotesInk()">
-          <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes (keine Bearbeitung)
-        </button>
-        <button class="exp-item" onclick="openPageExportModal()">
-          <i data-lucide="layers" style="width:13px;height:13px"></i>Drag &amp; Drop – Seiten
-        </button>
-      </div>
     </div>
     <!-- Sync status badge -->
     <div id="sync-badge" class="sync-badge" style="display:none"></div>
@@ -1274,14 +1259,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <button class="hbtn gn" id="auth-btn" onclick="handleAuthBtn()">
         <i data-lucide="user" style="width:13px;height:13px"></i>Anmelden
       </button>
-      <div class="user-menu-dropdown" id="user-menu-dropdown" style="display:none">
-        <button class="user-menu-item" onclick="closeUserMenu();openSettings();setTimeout(()=>{const el=document.getElementById('account-section-logged-in');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},200)">
-          <i data-lucide="settings" style="width:13px;height:13px"></i>Einstellungen
-        </button>
-        <button class="user-menu-item" onclick="closeUserMenu();signOutUser()">
-          <i data-lucide="log-out" style="width:13px;height:13px"></i>Abmelden
-        </button>
-      </div>
     </div>
     <button class="hbtn" onclick="openSettings()" title="Einstellungen" style="padding:5px 8px;display:flex;align-items:center">
       <i data-lucide="settings" style="width:13px;height:13px"></i>
@@ -6460,5 +6437,31 @@ if('serviceWorker' in navigator){
   }, { passive:false });
 })();
 </script>
+
+<!-- Export dropdown – lives at body level so header overflow cannot clip it -->
+<div class="exp-menu" id="exp-menu" style="display:none">
+  <button class="exp-item" onclick="closeExportMenu();exportPNG()">
+    <i data-lucide="image" style="width:13px;height:13px"></i>PNG (Bild)
+  </button>
+  <button class="exp-item" onclick="closeExportMenu();exportPDF()">
+    <i data-lucide="file-text" style="width:13px;height:13px"></i>PDF (Drucken)
+  </button>
+  <button class="exp-item" onclick="closeExportMenu();exportGoodNotesInk()">
+    <i data-lucide="pen-line" style="width:13px;height:13px"></i>GoodNotes (keine Bearbeitung)
+  </button>
+  <button class="exp-item" onclick="openPageExportModal()">
+    <i data-lucide="layers" style="width:13px;height:13px"></i>Drag &amp; Drop – Seiten
+  </button>
+</div>
+
+<!-- User menu dropdown – lives at body level so header overflow cannot clip it -->
+<div class="user-menu-dropdown" id="user-menu-dropdown" style="display:none">
+  <button class="user-menu-item" onclick="closeUserMenu();openSettings();setTimeout(()=>{const el=document.getElementById('account-section-logged-in');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},200)">
+    <i data-lucide="settings" style="width:13px;height:13px"></i>Einstellungen
+  </button>
+  <button class="user-menu-item" onclick="closeUserMenu();signOutUser()">
+    <i data-lucide="log-out" style="width:13px;height:13px"></i>Abmelden
+  </button>
+</div>
 </body>
 </html>

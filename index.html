@@ -62,6 +62,48 @@
   --shadow-lg:0 6px 24px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.3);
   --shadow-page:0 4px 20px rgba(0,0,0,0.55),0 1px 4px rgba(0,0,0,0.3);
 }
+/* ── NARROW SCREENS (iPhone etc.) ── */
+@media (max-width:760px){
+  header{height:48px;padding:0 10px;gap:6px}
+  .logo-svg{height:19px}
+  .vsep{display:none}
+  .htabs{padding:1px;border-radius:7px}
+  .htab{padding:5px 9px;font-size:11px}
+  .htab span{display:none}
+  .hactions{gap:3px}
+  .hbtn{padding:5px 7px;font-size:12px}
+  .hbtn span{display:none}
+  .sync-badge{padding:4px 6px}
+  .sync-badge span{display:none}
+  #auth-btn{max-width:38px}
+  #auth-btn span{display:none}
+
+  /* Side panels become off-canvas drawers instead of squeezing the page */
+  #panel-left,#panel-right{
+    position:fixed;top:52px;bottom:0;z-index:300;
+    box-shadow:var(--shadow-lg);
+    transition:transform .22s ease;
+  }
+  #panel-left{left:0;width:min(82vw,278px);transform:translateX(-100%)}
+  #panel-right{right:0;width:min(82vw,236px);transform:translateX(100%)}
+  #shell.show-left #panel-left{transform:translateX(0)}
+  #shell.show-right #panel-right{transform:translateX(0)}
+  #panel-right.collapsed{width:26px;transform:translateX(0);position:static;box-shadow:none}
+
+  .zoom-lbl{display:none}
+  .mobile-only{display:flex!important}
+  #panel-backdrop.show{display:block}
+}
+@media (max-width:760px) and (max-height:500px){
+  header{height:44px}
+}
+@media (min-width:761px){
+  .mobile-only{display:none!important}
+}
+#panel-backdrop{
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.32);z-index:290;
+}
+
 @media (prefers-color-scheme:dark){
   [data-theme="auto"]{
     --ink:#FFFFFF; --ink-soft:rgba(235,235,245,0.60);
@@ -120,8 +162,14 @@ header{
   color:var(--header-text);
   display:flex;align-items:center;gap:6px;
 }
-.logo-icon{width:20px;height:20px;border-radius:6px;display:block;flex-shrink:0}
-.logo-dot{width:7px;height:7px;background:var(--accent);border-radius:50%}
+.logo-svg{height:22px;width:auto;display:block;flex-shrink:0}
+.logo-svg .logo-ring{stroke:var(--ui-border2)}
+.logo-svg .logo-stroke{stroke:var(--accent)}
+.logo-svg .logo-dot-mark{fill:var(--accent)}
+.logo-svg .logo-word{
+  font-family:'Fraunces',serif;font-style:italic;font-weight:300;
+  font-size:16px;fill:var(--header-text);letter-spacing:-0.2px;
+}
 .vsep{width:0.5px;height:18px;background:var(--ui-border);margin:0 2px}
 
 .htabs{
@@ -820,10 +868,9 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 }
 .login-logo{
   display:flex;align-items:center;justify-content:center;gap:8px;
-  font-family:-apple-system,'SF Pro Display',sans-serif;
-  font-size:22px;font-weight:700;letter-spacing:-0.5px;color:var(--ink);
 }
-.login-logo-dot{width:9px;height:9px;background:var(--accent);border-radius:50%}
+.login-logo .logo-svg{height:30px}
+.login-logo .logo-svg .logo-word{font-size:22px}
 .login-title{
   font-size:18px;font-weight:700;
   font-family:-apple-system,'SF Pro Display',sans-serif;
@@ -1181,7 +1228,17 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 <!-- HEADER -->
 <header>
-  <div class="logo"><img class="logo-icon" src="./icons/icon-192.png" alt="" width="20" height="20"><span class="logo-dot"></span>MagicWrite</div>
+  <button id="left-toggle" class="hbtn gn mobile-only" onclick="toggleLeftPanel()" title="Dokumente" style="padding:6px 8px">
+    <i data-lucide="menu" style="width:16px;height:16px"></i>
+  </button>
+  <div class="logo">
+    <svg class="logo-svg" viewBox="0 0 172 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MagicWrite">
+      <circle cx="14" cy="14" r="12" class="logo-ring" fill="none" stroke-width="1.5"/>
+      <path d="M9 18.5 L18.5 9" class="logo-stroke" stroke-width="2.2" stroke-linecap="round"/>
+      <circle cx="18.5" cy="9" r="1.6" class="logo-dot-mark"/>
+      <text x="32" y="20" class="logo-word">MagicWrite</text>
+    </svg>
+  </div>
   <div class="vsep"></div>
   <div class="htabs">
     <button class="htab" id="tab-rec" onclick="switchTab('rec')">
@@ -1243,6 +1300,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 </header>
 
 <!-- BODY -->
+<div id="panel-backdrop" onclick="closeMobilePanels()"></div>
 <div id="shell-body">
 
 <!-- LEFT PANEL (Einrichten) -->
@@ -1847,7 +1905,14 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   <div class="login-card">
 
     <!-- Header (always visible) -->
-    <div class="login-logo"><img class="logo-icon" src="./icons/icon-192.png" alt="" width="20" height="20"><span class="login-logo-dot"></span>MagicWrite</div>
+    <div class="login-logo">
+      <svg class="logo-svg" viewBox="0 0 172 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MagicWrite">
+        <circle cx="14" cy="14" r="12" class="logo-ring" fill="none" stroke-width="1.5"/>
+        <path d="M9 18.5 L18.5 9" class="logo-stroke" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="18.5" cy="9" r="1.6" class="logo-dot-mark"/>
+        <text x="32" y="20" class="logo-word">MagicWrite</text>
+      </svg>
+    </div>
 
     <!-- ▸ Screen 1: Provider picker -->
     <div id="lms-pick" class="lm-screen">
@@ -5193,12 +5258,30 @@ document.addEventListener('click', e => {
 });
 
 function toggleRightPanel(){
+  const shell=document.getElementById('shell');
+  if(window.innerWidth<=760){
+    const showing=shell.classList.toggle('show-right');
+    shell.classList.remove('show-left');
+    document.getElementById('panel-backdrop').classList.toggle('show',showing);
+    return;
+  }
   const p=document.getElementById('panel-right');
   const btn=document.getElementById('right-toggle');
   const collapsed=p.classList.toggle('collapsed');
   btn.textContent=collapsed?'▶':'◀';
   btn.title=collapsed?'Seitenleiste einblenden':'Seitenleiste ausblenden';
   localStorage.setItem('mw-sidebar-collapsed',collapsed?'1':'0');
+}
+function toggleLeftPanel(){
+  const shell=document.getElementById('shell');
+  const showing=shell.classList.toggle('show-left');
+  shell.classList.remove('show-right');
+  document.getElementById('panel-backdrop').classList.toggle('show',showing);
+}
+function closeMobilePanels(){
+  const shell=document.getElementById('shell');
+  shell.classList.remove('show-left','show-right');
+  document.getElementById('panel-backdrop').classList.remove('show');
 }
 
 function resetMarginToFormatDefault(axis){
@@ -6318,6 +6401,38 @@ if('serviceWorker' in navigator){
     });
   });
 }
+</script>
+
+<!-- PWA: block native pinch/double-tap zoom everywhere except the document
+     page canvas (#doc-scroll), which has its own built-in zoom. iOS Safari
+     ignores the viewport "user-scalable=no" hint for accessibility reasons,
+     so it has to be stopped at the gesture-event level instead. -->
+<script>
+(function(){
+  // Safari-only pinch gesture events (fire in addition to touch events).
+  ['gesturestart','gesturechange','gestureend'].forEach(function(type){
+    document.addEventListener(type, function(e){ e.preventDefault(); }, { passive:false });
+  });
+
+  // Multi-touch pinch on any non-touch-optimized browser: block it, except
+  // inside the document canvas where the app implements its own pinch-zoom.
+  document.addEventListener('touchmove', function(e){
+    if(e.touches.length > 1 && !e.target.closest('#doc-scroll')){
+      e.preventDefault();
+    }
+  }, { passive:false });
+
+  // Double-tap-to-zoom: block rapid repeated taps, but never inside text
+  // inputs (double-tap is used there to select a word).
+  let lastTouchEnd = 0;
+  document.addEventListener('touchend', function(e){
+    const now = Date.now();
+    if(now - lastTouchEnd <= 300 && !e.target.closest('input,textarea')){
+      e.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, { passive:false });
+})();
 </script>
 </body>
 </html>

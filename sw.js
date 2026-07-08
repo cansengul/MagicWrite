@@ -2,7 +2,7 @@
 // Ermöglicht Offline-Start und Installation als PWA (iOS/Android).
 // Bump CACHE_VERSION whenever index.html or a cached asset changes,
 // so returning users get the new version instead of a stale cache.
-const CACHE_VERSION = 'magicwrite-v2';
+const CACHE_VERSION = 'magicwrite-v3';
 
 // App shell — same-origin files needed to render the app at all.
 const APP_SHELL = [

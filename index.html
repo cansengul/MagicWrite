@@ -1256,7 +1256,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     <div id="sync-badge" class="sync-badge" style="display:none"></div>
     <!-- Auth button + dropdown -->
     <div class="user-menu-wrap" id="user-menu-wrap">
-      <button class="hbtn gn" id="auth-btn" onclick="handleAuthBtn()">
+      <button class="hbtn gn" id="auth-btn" onclick="handleAuthBtn(event)">
         <i data-lucide="user" style="width:13px;height:13px"></i>Anmelden
       </button>
     </div>
@@ -3827,17 +3827,14 @@ function toggleExportMenu(e){
   const menu = document.getElementById('exp-menu');
   if(!menu) return;
   const isOpen = menu.style.display === 'flex';
-  if(isOpen){
-    closeExportMenu();
-  } else {
-    // Use fixed positioning so the dropdown escapes the header's
-    // overflow-x:auto clipping on narrow/scrollable screens.
+  closeAllDropdowns();          // always close everything first
+  if(!isOpen){                  // was closed → open it
     const wrap = document.getElementById('exp-wrap');
     const r = wrap ? wrap.getBoundingClientRect() : null;
     if(r){
       menu.style.position = 'fixed';
-      menu.style.top = (r.bottom + 6) + 'px';
-      menu.style.right = (window.innerWidth - r.right) + 'px';
+      menu.style.top  = (r.bottom + 6) + 'px';
+      menu.style.right= (window.innerWidth - r.right) + 'px';
       menu.style.left = 'auto';
     }
     menu.style.display = 'flex';
@@ -3845,18 +3842,9 @@ function toggleExportMenu(e){
   }
 }
 function closeExportMenu(){
-  const menu = document.getElementById('exp-menu');
-  if(menu) menu.style.display = 'none';
+  const m = document.getElementById('exp-menu');
+  if(m) m.style.display = 'none';
 }
-document.addEventListener('click',e=>{
-  const wrap=document.getElementById('exp-wrap');
-  if(wrap&&!wrap.contains(e.target)) closeExportMenu();
-});
-// Close on header scroll / resize / orientation so the fixed dropdown
-// never drifts away from the button it is anchored to.
-document.getElementById('app-header')?.addEventListener('scroll', closeExportMenu, { passive: true });
-window.addEventListener('resize', closeExportMenu, { passive: true });
-window.addEventListener('orientationchange', closeExportMenu, { passive: true });
 
 // ═══════════════════════════════════════════════════════════
 // PERSISTENCE  (IndexedDB – local glyph storage)
@@ -5224,8 +5212,9 @@ function updateAccountSection(){
 }
 
 // ── AUTH BUTTON HANDLER ────────────────────────────────────
-function handleAuthBtn(){
+function handleAuthBtn(e){
   if(fbUser){
+    if(e) e.stopPropagation();
     toggleUserMenu();
   } else {
     openLoginModal();
@@ -5235,26 +5224,20 @@ function handleAuthBtn(){
 function toggleUserMenu(){
   const dd = document.getElementById('user-menu-dropdown');
   if(!dd) return;
-  const isOpen = dd.style.display !== 'none';
-  if(isOpen){
-    dd.style.display = 'none';
-  } else {
-    // Position as a fixed-position element anchored to the auth button
-    // instead of relying on the (position:absolute) default. This is
-    // required because the header can be horizontally scrollable on
-    // narrow screens (overflow-x:auto), which would otherwise clip an
-    // absolutely-positioned dropdown via the header's own overflow box.
+  const isOpen = dd.style.display === 'flex';
+  closeAllDropdowns();          // always close everything first
+  if(!isOpen){                  // was closed → open it
     const wrap = document.getElementById('user-menu-wrap');
     const r = wrap ? wrap.getBoundingClientRect() : null;
     if(r){
       dd.style.position = 'fixed';
-      dd.style.top = (r.bottom + 6) + 'px';
-      dd.style.right = (window.innerWidth - r.right) + 'px';
+      dd.style.top  = (r.bottom + 6) + 'px';
+      dd.style.right= (window.innerWidth - r.right) + 'px';
       dd.style.left = 'auto';
     }
     dd.style.display = 'flex';
+    if(window.lucide) lucide.createIcons();
   }
-  if(!isOpen && window.lucide) lucide.createIcons();
 }
 
 function closeUserMenu(){
@@ -5262,21 +5245,27 @@ function closeUserMenu(){
   if(dd) dd.style.display = 'none';
 }
 
+// ── UNIFIED DROPDOWN MANAGEMENT ───────────────────────────────────────────
+// Close ALL open dropdowns (ensures at most one is open at a time).
+function closeAllDropdowns(){
+  closeExportMenu();
+  closeUserMenu();
+}
+
+// Single global listener: any click that didn't originate inside an open
+// dropdown (and wasn't stopped by a trigger button) closes everything.
 document.addEventListener('click', e => {
-  const wrap = document.getElementById('user-menu-wrap');
-  if(wrap && !wrap.contains(e.target)) closeUserMenu();
+  const expMenu  = document.getElementById('exp-menu');
+  const userMenu = document.getElementById('user-menu-dropdown');
+  const inExp    = expMenu  && expMenu.contains(e.target);
+  const inUser   = userMenu && userMenu.contains(e.target);
+  if(!inExp && !inUser) closeAllDropdowns();
 });
 
-// Close the dropdown on header scroll (narrow screens: header can be
-// scrolled horizontally) so it never drifts away from the button it's
-// anchored to.
-document.getElementById('app-header')?.addEventListener('scroll', closeUserMenu, { passive: true });
-
-// Close the dropdown on viewport changes (resize / orientation change) since
-// its fixed top/right offsets were computed once at open time and would
-// otherwise drift out of alignment with the button.
-window.addEventListener('resize', closeUserMenu, { passive: true });
-window.addEventListener('orientationchange', closeUserMenu, { passive: true });
+// Close on scroll / resize / orientation so fixed positions never drift.
+document.getElementById('app-header')?.addEventListener('scroll', closeAllDropdowns, { passive: true });
+window.addEventListener('resize',            closeAllDropdowns, { passive: true });
+window.addEventListener('orientationchange', closeAllDropdowns, { passive: true });
 
 function toggleRightPanel(){
   const p=document.getElementById('panel-right');

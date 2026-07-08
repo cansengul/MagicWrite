@@ -145,6 +145,16 @@ header{
   background:var(--header-bg);
   border-bottom:0.5px solid var(--ui-border);
   display:flex;align-items:center;padding:0 16px;gap:10px;z-index:200;
+  box-sizing:content-box;
+}
+/* When installed as a PWA on iOS/iPadOS, the status bar is translucent and
+   overlays the page (apple-mobile-web-app-status-bar-style=black-translucent),
+   so the header needs extra top space to clear it. Only applied in standalone
+   mode — the normal browser tab already reserves this space itself. */
+@media (display-mode: standalone){
+  header{
+    padding-top:env(safe-area-inset-top);
+  }
 }
 .logo{
   font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
@@ -1214,7 +1224,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <div id="shell">
 
 <!-- HEADER -->
-<header>
+<header id="app-header">
   <div class="logo">
     <img class="logo-mark" src="./icons/logo-mark.png" alt="" width="20" height="24">
     <span class="logo-word">MagicWrite</span>
@@ -5223,7 +5233,24 @@ function toggleUserMenu(){
   const dd = document.getElementById('user-menu-dropdown');
   if(!dd) return;
   const isOpen = dd.style.display !== 'none';
-  dd.style.display = isOpen ? 'none' : 'flex';
+  if(isOpen){
+    dd.style.display = 'none';
+  } else {
+    // Position as a fixed-position element anchored to the auth button
+    // instead of relying on the (position:absolute) default. This is
+    // required because the header can be horizontally scrollable on
+    // narrow screens (overflow-x:auto), which would otherwise clip an
+    // absolutely-positioned dropdown via the header's own overflow box.
+    const wrap = document.getElementById('user-menu-wrap');
+    const r = wrap ? wrap.getBoundingClientRect() : null;
+    if(r){
+      dd.style.position = 'fixed';
+      dd.style.top = (r.bottom + 6) + 'px';
+      dd.style.right = (window.innerWidth - r.right) + 'px';
+      dd.style.left = 'auto';
+    }
+    dd.style.display = 'flex';
+  }
   if(!isOpen && window.lucide) lucide.createIcons();
 }
 
@@ -5236,6 +5263,17 @@ document.addEventListener('click', e => {
   const wrap = document.getElementById('user-menu-wrap');
   if(wrap && !wrap.contains(e.target)) closeUserMenu();
 });
+
+// Close the dropdown on header scroll (narrow screens: header can be
+// scrolled horizontally) so it never drifts away from the button it's
+// anchored to.
+document.getElementById('app-header')?.addEventListener('scroll', closeUserMenu, { passive: true });
+
+// Close the dropdown on viewport changes (resize / orientation change) since
+// its fixed top/right offsets were computed once at open time and would
+// otherwise drift out of alignment with the button.
+window.addEventListener('resize', closeUserMenu, { passive: true });
+window.addEventListener('orientationchange', closeUserMenu, { passive: true });
 
 function toggleRightPanel(){
   const p=document.getElementById('panel-right');

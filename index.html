@@ -1455,7 +1455,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <div class="rec-hint" id="rec-hint">Hier zeichnen</div>
     </div>
     <div id="rec-oob-warn" style="display:none;background:rgba(255,149,0,0.12);border:0.5px solid rgba(255,149,0,0.45);border-radius:var(--r-sm);padding:7px 10px;font-size:11px;color:var(--warn);line-height:1.55">
-      ⚠️ Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen, da es sonst abgeschnitten werden kann.
+      <i data-lucide="alert-triangle" style="width:13px;height:13px;flex-shrink:0;vertical-align:middle;margin-right:4px"></i>Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen, da es sonst abgeschnitten werden kann.
     </div>
     <div class="guide-legend">
       <span class="guide-cap">Großbuchstaben-Oberlinie</span>
@@ -1707,7 +1707,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <!-- EMAIL VERIFICATION REQUIRED MODAL -->
 <div id="verify-required-modal">
   <div class="verify-req-card">
-    <div class="verify-req-icon">✉️</div>
+    <div class="verify-req-icon"><i data-lucide="mail" style="width:36px;height:36px;color:var(--accent)"></i></div>
     <div class="verify-req-title">E-Mail-Adresse bestätigen</div>
     <div class="verify-req-desc">
       Um auf deine gespeicherten Zeichen und Einstellungen zugreifen zu können,
@@ -1722,7 +1722,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
     </div>
     <div class="verify-req-actions">
       <button class="lm-action-btn" onclick="checkVerificationAndLoad()">
-        ✓ Ich habe bestätigt – weiter
+        <i data-lucide="check" style="width:14px;height:14px"></i> Ich habe bestätigt – weiter
       </button>
       <button class="btn btn-o" onclick="resendVerificationEmailModal()" style="width:100%;padding:11px;font-size:13px;justify-content:center">
         <i data-lucide="send" style="width:13px;height:13px"></i>
@@ -1774,7 +1774,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           <div id="ex-hint" style="position:absolute;left:0;right:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:rgba(200,193,185,0.7);pointer-events:none;transition:opacity .2s;top:62%">Hier zeichnen…</div>
         </div>
         <div id="ex-oob-warn" style="display:none;background:rgba(255,149,0,0.12);border:0.5px solid rgba(255,149,0,0.45);border-radius:var(--r-sm);padding:6px 9px;font-size:10.5px;color:var(--warn);line-height:1.5;max-width:190px">
-          ⚠️ Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen. Auto-Speichern pausiert. Zum Fortfahren „Speichern + Weiter" drücken.
+          <i data-lucide="alert-triangle" style="width:12px;height:12px;flex-shrink:0;vertical-align:middle;margin-right:4px"></i>Zeichen geht über Oberlinie oder Unterlänge hinaus – bitte neu zeichnen. Auto-Speichern pausiert. Zum Fortfahren „Speichern + Weiter" drücken.
         </div>
 
         <div>
@@ -1918,7 +1918,8 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <!-- Logged in -->
       <div id="account-section-logged-in" style="display:none;flex-direction:column;gap:10px">
         <div class="account-user-card">
-          <img id="account-photo" src="" alt="" onerror="this.style.display='none'" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0">
+          <img id="account-photo" src="" alt="" onerror="this.style.display='none';var fb=document.getElementById('account-photo-fallback');if(fb){fb.style.display='flex';if(window.lucide)lucide.createIcons();}" style="width:38px;height:38px;border-radius:50%;object-fit:cover;flex-shrink:0">
+          <div id="account-photo-fallback" style="display:flex;width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;align-items:center;justify-content:center;flex-shrink:0"><i data-lucide="user-round" style="width:20px;height:20px"></i></div>
           <div>
             <div class="account-user-name" id="account-name">–</div>
             <div class="account-user-email" id="account-email">–</div>
@@ -1995,7 +1996,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <!-- UNKNOWN CHAR MODAL -->
 <div id="unknown-modal">
   <div class="umodal-inner">
-    <div class="umodal-title">⚠️ Unbekannte Zeichen erkannt</div>
+    <div class="umodal-title" style="display:flex;align-items:center;gap:7px"><i data-lucide="alert-triangle" style="width:18px;height:18px;flex-shrink:0;color:var(--warn)"></i>Unbekannte Zeichen erkannt</div>
     <div class="umodal-body">Beim Rendern wurden Zeichen gefunden, für die noch keine Handschrift aufgenommen wurde. Sie werden derzeit übersprungen:</div>
     <div class="umodal-chars" id="umodal-char-list"></div>
     <label class="umodal-check-row">
@@ -2145,7 +2146,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
     <!-- ▸ Screen 5: Verify email (after registration) -->
     <div id="lms-verify" class="lm-screen" style="display:none">
-      <div class="lm-verify-icon">✉️</div>
+      <div class="lm-verify-icon"><i data-lucide="mail" style="width:40px;height:40px;color:var(--accent)"></i></div>
       <div>
         <div class="login-title" style="text-align:center">E-Mail bestätigen</div>
         <div class="login-desc" style="margin-top:6px">Wir haben dir eine Bestätigungs-E-Mail geschickt an:<br>
@@ -2167,7 +2168,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <!-- STORAGE LIMIT MODAL -->
 <div id="limit-modal">
   <div class="reauth-card">
-    <div class="reauth-title">⚠️ Speicherplatz voll</div>
+    <div class="reauth-title" style="display:flex;align-items:center;gap:8px"><i data-lucide="alert-triangle" style="width:18px;height:18px;flex-shrink:0;color:var(--warn)"></i>Speicherplatz voll</div>
     <div class="reauth-desc">Der Cloud-Speicher für deine Schriftdatenbank ist voll (1&thinsp;MB). Exportiere deine Zeichen als Sicherung oder lösche einzelne Varianten, um Platz zu schaffen.</div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-o" style="flex:1" onclick="document.getElementById('limit-modal').classList.remove('open')">Schließen</button>
@@ -2331,7 +2332,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 'use strict';
 
 // ═══════════════════════════════════════════════════════════
-// ⚠️ FIREBASE KONFIGURATION
+// [!] FIREBASE KONFIGURATION
 // Fülle deine Firebase-Projektkonfiguration hier ein.
 // Anleitung: Lies die Datei firebase_setup_guide.md
 // ═══════════════════════════════════════════════════════════
@@ -4280,29 +4281,29 @@ function setThemeQuiet(t){
 // ═══════════════════════════════════════════════════════════
 const _TUT_STEPS = [
   {
-    icon:'✏️',
+    icon:'pencil',
     title:'Willkommen bei MagicWrite',
     text:'MagicWrite verwandelt deinen Text in deine persönliche Handschrift. Du scannst deine Buchstaben einmalig ein — danach schreibt die App jeden Text in deiner Schrift.'
   },
   {
-    icon:'🔤',
+    icon:'type',
     title:'Tab „Einrichten" — Buchstaben einscannen',
     text:'Wechsle zum Tab <strong>Einrichten</strong> (links oben). Wähle einen Buchstaben aus dem Raster, dann zeichne ihn mit deinem Stift entlang der Hilfslinien:<br><br>• Großbuchstaben bis zur <em>Cap-Linie</em> oben<br>• Kleinbuchstaben bis zur <em>x-Höhe</em><br>• Buchstaben wie g, p, y dürfen unter die Grundlinie'
   },
   {
-    icon:'⚡',
+    icon:'zap',
     title:'Schnellscan — alles auf einmal',
-    text:'Tippe auf den <strong>Schnellscan-Button</strong> (⚡ oben) um alle Buchstaben der Reihe nach einzuscannen. Nach dem Zeichnen wartet die App kurz und springt automatisch weiter.<br><br>Mit <strong>Zurück</strong> kannst du den letzten Buchstaben neu zeichnen — die alte Version wird automatisch gelöscht.'
+    text:'Tippe auf den <strong>Schnellscan-Button</strong> (oben) um alle Buchstaben der Reihe nach einzuscannen. Nach dem Zeichnen wartet die App kurz und springt automatisch weiter.<br><br>Mit <strong>Zurück</strong> kannst du den letzten Buchstaben neu zeichnen — die alte Version wird automatisch gelöscht.'
   },
   {
-    icon:'📄',
+    icon:'file-text',
     title:'Tab „Dokument" — Text schreiben',
     text:'Wechsle zum Tab <strong>Dokument</strong>. Tippe deinen Text in das Textfeld — MagicWrite rendert ihn sofort in deiner Handschrift auf dem Papier.<br><br>Tipp: Du kannst ChatGPT-Texte direkt einfügen — Markdown-Formatierung (Fett, Kursiv) wird automatisch entfernt, Nummerierungen bleiben erhalten.'
   },
   {
-    icon:'📤',
+    icon:'upload',
     title:'Exportieren',
-    text:'Tippe auf das <strong>↓-Symbol</strong> oben rechts um zu exportieren:<br><br>• <strong>PDF</strong> — für Druck oder Archiv<br>• <strong>GoodNotes</strong> — als bearbeitbare Ink-PDF importieren<br>• Einzelne Seiten per Drag & Drop in GoodNotes ziehen<br><br>Viel Spaß mit MagicWrite! 🎉'
+    text:'Tippe auf das <strong>↓-Symbol</strong> oben rechts um zu exportieren:<br><br>• <strong>PDF</strong> — für Druck oder Archiv<br>• <strong>GoodNotes</strong> — als bearbeitbare Ink-PDF importieren<br>• Einzelne Seiten per Drag & Drop in GoodNotes ziehen<br><br>Viel Spaß mit MagicWrite!<i data-lucide="star" style="width:14px;height:14px;vertical-align:middle;margin-left:4px;color:var(--warn)"></i>'
   }
 ];
 let _tutStep = 0;
@@ -4323,10 +4324,15 @@ function _renderTutStep(){
   if(!content) return;
 
   content.innerHTML = `
-    <div style="font-size:32px;text-align:center">${s.icon}</div>
+    <div style="display:flex;align-items:center;justify-content:center;margin-bottom:2px">
+      <div style="width:52px;height:52px;border-radius:14px;background:var(--accent-lt);display:flex;align-items:center;justify-content:center">
+        <i data-lucide="${s.icon}" style="width:26px;height:26px;color:var(--accent)"></i>
+      </div>
+    </div>
     <div style="font-weight:700;font-size:16px;text-align:center;color:var(--ink)">${s.title}</div>
     <div style="font-size:13px;color:var(--ink-soft);line-height:1.65;text-align:center">${s.text}</div>
   `;
+  if(window.lucide) lucide.createIcons();
 
   if(dots){
     dots.innerHTML = _TUT_STEPS.map((_,i)=>
@@ -4340,7 +4346,8 @@ function _renderTutStep(){
     btnPrev.style.pointerEvents = first ? 'none' : '';
   }
   if(btnNext){
-    btnNext.textContent = _tutStep===_TUT_STEPS.length-1 ? 'Los geht\'s ✓' : 'Weiter →';
+    btnNext.innerHTML = _tutStep===_TUT_STEPS.length-1 ? 'Los geht\'s <i data-lucide="check" style="width:13px;height:13px;vertical-align:middle"></i>' : 'Weiter →';
+  if(window.lucide) lucide.createIcons();
   }
 }
 
@@ -5314,16 +5321,17 @@ function setSyncStatus(status){
   if(!badge) return;
   const cfg = {
     idle:     { html: '',                                                                   cls: '',              show: false },
-    synced:   { html: '✓ Synchronisiert',                                                  cls: 'sync-ok',       show: true  },
+    synced:   { html: '<i data-lucide="check" style="width:11px;height:11px"></i> Synchronisiert', cls: 'sync-ok', show: true },
     pending:  { html: '· Ausstehend',                                                      cls: 'sync-pending',  show: true  },
     syncing:  { html: '<span class="sync-spinner">↻</span> Sync läuft…',                  cls: 'sync-progress', show: true  },
     offline:  { html: '○ Offline',                                                         cls: 'sync-offline',  show: true  },
-    error:    { html: '⚠ Fehler',                                                          cls: 'sync-error',    show: true  },
+    error:    { html: '<i data-lucide="alert-triangle" style="width:11px;height:11px"></i> Fehler', cls: 'sync-error', show: true },
   };
   const c = cfg[status] || cfg.idle;
   badge.style.display = c.show ? 'flex' : 'none';
   badge.innerHTML     = c.html;
   badge.className     = 'sync-badge ' + c.cls;
+  if(window.lucide) lucide.createIcons();
 }
 
 // ── AUTH UI ────────────────────────────────────────────────
@@ -5344,11 +5352,11 @@ function updateAuthUI(user){
       img.onerror = () => img.remove();
       btn.appendChild(img);
     } else {
-      const initials = nameStr.charAt(0).toUpperCase();
       const av = document.createElement('div');
       av.className = 'user-avatar-initial';
-      av.textContent = initials;
+      av.innerHTML = '<i data-lucide="user-round" style="width:13px;height:13px"></i>';
       btn.appendChild(av);
+      if(window.lucide) lucide.createIcons();
     }
     const span = document.createElement('span');
     span.style.cssText = 'max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px';
@@ -5379,8 +5387,12 @@ function updateAccountSection(){
       const _isEmail = fbUser.providerData && fbUser.providerData.some(p=>p.providerId==='password');
       if(fbUser.photoURL && !_isEmail){
         photo.src=fbUser.photoURL; photo.style.display='';
+        const fb = document.getElementById('account-photo-fallback');
+        if(fb) fb.style.display='none';
       } else {
         photo.style.display='none';
+        const fb = document.getElementById('account-photo-fallback');
+        if(fb){ fb.style.display='flex'; if(window.lucide) lucide.createIcons(); }
       }
     }
     if(name)  name.textContent  = fbUser.displayName || fbUser.email?.split('@')[0] || 'Nutzer';
@@ -5390,7 +5402,7 @@ function updateAccountSection(){
       const isEmailUser = providerIds.includes('password');
       email.innerHTML = (fbUser.email || '') +
         (isEmailUser && !verified
-          ? ' <span class="lm-unverified-badge">⚠ nicht bestätigt</span>'
+          ? ' <span class="lm-unverified-badge"><i data-lucide="alert-triangle" style="width:10px;height:10px;vertical-align:middle"></i> nicht bestätigt</span>'
           : '');
       // Offer to resend verification if unverified
       const resendBtn = document.getElementById('account-resend-verify');
@@ -6658,15 +6670,15 @@ if('serviceWorker' in navigator){
     <!-- Benefits -->
     <div class="pwa-benefits">
       <div class="pwa-benefit-row">
-        <div class="pwa-benefit-icon">📶</div>
+        <div class="pwa-benefit-icon"><i data-lucide="wifi" style="width:20px;height:20px"></i></div>
         <span>Auch <strong>offline</strong> nutzbar – kein Internet nötig</span>
       </div>
       <div class="pwa-benefit-row">
-        <div class="pwa-benefit-icon">⊞</div>
+        <div class="pwa-benefit-icon"><i data-lucide="layout-grid" style="width:20px;height:20px"></i></div>
         <span>Direkt vom Home-Bildschirm öffnen</span>
       </div>
       <div class="pwa-benefit-row">
-        <div class="pwa-benefit-icon">▢</div>
+        <div class="pwa-benefit-icon"><i data-lucide="maximize" style="width:20px;height:20px"></i></div>
         <span>Vollbild ohne Browser-Leiste</span>
       </div>
     </div>

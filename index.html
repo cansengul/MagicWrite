@@ -3847,13 +3847,39 @@ function renderCustomColors(){
 // ═══════════════════════════════════════════════════════════
 function toggleExportMenu(e){
   e.stopPropagation();
-  document.getElementById('exp-menu').classList.toggle('open');
+  const menu = document.getElementById('exp-menu');
+  if(!menu) return;
+  const isOpen = menu.style.display === 'flex';
+  if(isOpen){
+    closeExportMenu();
+  } else {
+    // Use fixed positioning so the dropdown escapes the header's
+    // overflow-x:auto clipping on narrow/scrollable screens.
+    const wrap = document.getElementById('exp-wrap');
+    const r = wrap ? wrap.getBoundingClientRect() : null;
+    if(r){
+      menu.style.position = 'fixed';
+      menu.style.top = (r.bottom + 6) + 'px';
+      menu.style.right = (window.innerWidth - r.right) + 'px';
+      menu.style.left = 'auto';
+    }
+    menu.style.display = 'flex';
+    if(window.lucide) lucide.createIcons();
+  }
 }
-function closeExportMenu(){document.getElementById('exp-menu').classList.remove('open');}
+function closeExportMenu(){
+  const menu = document.getElementById('exp-menu');
+  if(menu) menu.style.display = 'none';
+}
 document.addEventListener('click',e=>{
   const wrap=document.getElementById('exp-wrap');
   if(wrap&&!wrap.contains(e.target)) closeExportMenu();
 });
+// Close on header scroll / resize / orientation so the fixed dropdown
+// never drifts away from the button it is anchored to.
+document.getElementById('app-header')?.addEventListener('scroll', closeExportMenu, { passive: true });
+window.addEventListener('resize', closeExportMenu, { passive: true });
+window.addEventListener('orientationchange', closeExportMenu, { passive: true });
 
 // ═══════════════════════════════════════════════════════════
 // PERSISTENCE  (IndexedDB – local glyph storage)

@@ -118,37 +118,40 @@ Retrieved 2026-07-13, License - CC BY-SA 4.0
      in the page lifecycle). Stored globally so the install-modal IIFE can
      read it regardless of when it runs. -->
 <script>
-/* ── iOS PWA KEYBOARD AVOIDANCE ───────────────────────────────────────────
-   On iOS in standalone mode the layout viewport never shrinks when the
-   software keyboard opens, so fixed elements and bottom bars get covered.
-   We use visualViewport to measure the exposed height and set --keyboard-h,
-   which CSS uses to shrink #shell and shift fixed modals upward.
-   This runs ONLY on resize events – not on page load – so it cannot
-   trigger the bottom-bar bug (which needs the initial dvh calc to be stable).
+/* ── iOS PWA KEYBOARD AVOIDANCE ──────────────────────────────────────────
+   In standalone mode the layout viewport does not shrink when the keyboard
+   opens. We use visualViewport to detect the gap and set --keyboard-h so
+   CSS can push content above the keyboard. Runs only on resize events,
+   never on page load, so it does not affect the bottom-bar fix.
    ─────────────────────────────────────────────────────────────────────── */
 (function(){
   if(!window.visualViewport) return;
   var vv = window.visualViewport;
   var root = document.documentElement;
   var ticking = false;
-
-  function applyKeyboardHeight(){
+  function apply(){
     ticking = false;
-    // keyboard height = gap between layout viewport bottom and visual viewport bottom
     var kh = Math.max(0, window.innerHeight - vv.offsetTop - vv.height);
     root.style.setProperty('--keyboard-h', kh + 'px');
   }
-
-  function schedule(){
-    if(!ticking){
-      ticking = true;
-      requestAnimationFrame(applyKeyboardHeight);
-    }
-  }
-
-  vv.addEventListener('resize', schedule, { passive: true });
-  vv.addEventListener('scroll', schedule, { passive: true });
+  function schedule(){ if(!ticking){ ticking=true; requestAnimationFrame(apply); } }
+  vv.addEventListener('resize', schedule, {passive:true});
+  vv.addEventListener('scroll', schedule, {passive:true});
 })();
+/* ── SPLASH SCREEN ──────────────────────────────────────────────────────────
+   Shows while the app loads after the iOS splash image. Fades out once
+   window.load fires (all resources ready). Short delay so the transition
+   is visible even on cached/fast loads.
+   ─────────────────────────────────────────────────────────────────────── */
+window.addEventListener('load', function(){
+  var s = document.getElementById('splash');
+  if(!s) return;
+  setTimeout(function(){
+    s.classList.add('hiding');
+    s.addEventListener('transitionend', function(){ s.classList.add('hidden'); }, {once:true});
+  }, 350);
+}, {once:true});
+
 window.addEventListener('beforeinstallprompt', function(e){
   e.preventDefault();
   window._mwDeferredPrompt = e;
@@ -256,26 +259,16 @@ window.addEventListener('appinstalled', function(){
 }
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{
-  /* No height constraint here, no overflow:hidden.
-     overflow:hidden on html creates a WebKit clipping context at the dvh
-     boundary, which iOS calculates wrong on PWA startup → clips the fixed
-     #shell → black bar at the bottom.
-     overscroll-behavior:none replaces overflow:hidden for bounce prevention. */
-  overscroll-behavior:none;
+html,body{
+  height:100%;
   font-family:-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif;
   font-size:13px;
   background:var(--ui-bg);color:var(--ink);
-  -webkit-font-smoothing:antialiased;
-  touch-action:manipulation;
-}
-body{
-  /* SO approach (stackoverflow.com/a/66012902): 100vh with viewport-fit=cover
-     = full screen height in iOS PWA standalone. overflow:hidden on body (not
-     html) blocks scrolling without creating a clipping context for #shell.   */
-  height:100vh;
   overflow:hidden;
-  overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+  /* Block browser pinch/double-tap zoom outside the document canvas;
+     the document page itself has its own zoom (see #doc-scroll below). */
+  touch-action:manipulation;
 }
 /* ── NO TEXT SELECTION ANYWHERE ── */
 *{
@@ -289,7 +282,7 @@ input,textarea,select{
 }
 
 /* ── SHELL ── */
-#shell{position:fixed;inset:0;bottom:var(--keyboard-h,0px);display:flex;flex-direction:column;overflow:hidden}
+#shell{display:flex;flex-direction:column;position:fixed;inset:0;bottom:var(--keyboard-h,0px);overflow:hidden}
 #shell-body{display:flex;flex:1;min-height:0;overflow:hidden}
 #shell.compose-mode #panel-left{display:none}
 #shell.compose-mode #psec-alphabet,
@@ -308,35 +301,15 @@ header{
    so the header needs extra top space to clear it. Only applied in standalone
    mode — the normal browser tab already reserves this space itself. */
 @media (display-mode: standalone){
-  /* Status bar is translucent overlay → push header content below it. */
+  /* Push header content below the translucent status bar. */
   header{
     padding-top:env(safe-area-inset-top);
   }
-  /* Extend the shell into the home-indicator area so no bare html background
-     shows through. The padding is absorbed inside the already-fixed 100dvh
-     height, so the layout compresses slightly rather than overflowing. */
+  /* #shell is position:fixed;inset:0 so it covers the full screen including
+     the home-indicator area. padding-bottom keeps content above that zone.
+     Source: stackoverflow.com/a/66012902 (PeteLe, CC BY-SA 4.0)            */
   #shell{
-    padding-bottom:env(safe-area-inset-bottom);
-  }
-  /* ── KEYBOARD AVOIDANCE ──────────────────────────────────────────────
-     --keyboard-h is set by JS via visualViewport.resize (0px at rest).
-     #shell shrinks so .text-bar / #txt stay visible above the keyboard.
-     Fixed-position modals cover inset:0 (layout viewport, not visual),
-     so we push their content up with padding-bottom.                   */
-  #login-modal,
-  #settings-modal,
-  #fmt-modal,
-  #ex-modal,
-  #limit-modal,
-  #unknown-modal,
-  #pwa-install-modal{
-    padding-bottom:var(--keyboard-h, 0px);
-    box-sizing:border-box;
-  }
-  /* Settings sheet slides from bottom — cap its height so it never
-     extends behind the keyboard when inputs are focused.              */
-  .smodal-inner{
-    max-height:calc(86dvh - var(--keyboard-h, 0px));
+    padding-bottom:env(safe-area-inset-bottom,20px);
   }
 }
 .logo{
@@ -866,7 +839,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 /* ── TOAST ── */
 #toast{
-  position:fixed;bottom:calc(24px + var(--keyboard-h, 0px));left:50%;transform:translateX(-50%);
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
   background:rgba(28,28,28,0.88);color:#fff;
   font-family:-apple-system,'SF Pro Text',sans-serif;
   font-size:13px;font-weight:500;
@@ -1465,9 +1438,38 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 }
 #pwa-install-btn:hover{opacity:0.88}
 #pwa-install-btn:active{transform:scale(0.97)}
+
+/* ── SPLASH SCREEN ── */
+#splash{
+  position:fixed;inset:0;z-index:9999;
+  background:var(--ui-bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:16px;
+  pointer-events:none;
+  transition:opacity 0.45s ease;
+}
+#splash.hiding{opacity:0;}
+#splash.hidden{display:none;}
+#splash-mark{
+  width:52px;height:auto;
+  animation:splash-pulse 1.6s ease-in-out infinite;
+}
+@keyframes splash-pulse{
+  0%,100%{opacity:1;}
+  50%{opacity:0.45;}
+}
+#splash-name{
+  font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
+  font-size:22px;font-weight:700;letter-spacing:-0.5px;
+  color:var(--ink);
+}
 </style>
 </head>
 <body>
+<div id="splash" aria-hidden="true">
+  <img id="splash-mark" src="./icons/logo-mark.png" alt="" width="52" height="63">
+  <span id="splash-name">MagicWrite</span>
+</div>
 </div>
 <div id="shell">
 

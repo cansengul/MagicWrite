@@ -139,102 +139,19 @@ Retrieved 2026-07-13, License - CC BY-SA 4.0
   vv.addEventListener('scroll', schedule, {passive:true});
 })();
 /* ── SPLASH SCREEN ──────────────────────────────────────────────────────────
-   Shows while the app loads after the iOS splash image. Fades out once
-   window.load fires (all resources ready). Short delay so the transition
-   is visible even on cached/fast loads.
+   CSS shows the splash only in PWA standalone mode (display:none elsewhere).
+   After window.load fires, fade it out so the app is fully ready to use.
    ─────────────────────────────────────────────────────────────────────── */
 window.addEventListener('load', function(){
   var s = document.getElementById('splash');
   if(!s) return;
   setTimeout(function(){
     s.classList.add('hiding');
-    s.addEventListener('transitionend', function(){ s.classList.add('hidden'); }, {once:true});
-  }, 350);
+    s.addEventListener('transitionend', function(){
+      s.classList.add('hidden');
+    }, {once:true});
+  }, 400);
 }, {once:true});
-
-window.addEventListener('beforeinstallprompt', function(e){
-  e.preventDefault();
-  window._mwDeferredPrompt = e;
-});
-window.addEventListener('appinstalled', function(){
-  window._mwDeferredPrompt = null;
-  localStorage.setItem('mw-install-shown','1');
-});
-</script>
-
-<!-- Icons / favicon -->
-<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
-<link rel="shortcut icon" type="image/png" href="./icons/favicon-32.png">
-
-<!-- Critical CSS is inlined first so the correct background/theme paints
-     immediately, before any network request finishes. Fonts and the
-     (large) third-party scripts below are non-blocking (preconnect +
-     defer), so the UI appears in well under a second instead of staying
-     blank/black while they download. -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://www.gstatic.com">
-<link rel="preconnect" href="https://unpkg.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,300;0,400;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-<!-- Lucide + Firebase are loaded further down, right before the script that
-     needs them (see before the main <script> block). Keeping them out of
-     <head> lets the page shell paint immediately instead of staying
-     blank/black while ~300KB of third-party JS downloads. -->
-<style>
-/* ═══════════════════════════════════════
-   GOODNOTES / iPadOS DESIGN SYSTEM
-   ═══════════════════════════════════════ */
-:root {
-  --keyboard-h:0px;
-  --ink:#000000; --ink-soft:rgba(60,60,67,0.60);
-  --paper:#FFFFFF; --paper-warm:#F2F2F7;
-  --accent:#007AFF; --accent-lt:rgba(0,122,255,0.10);
-  --success:#34C759; --destructive:#FF3B30; --warn:#FF9500;
-  --ui-bg:#F2F2F7; --ui-border:rgba(60,60,67,0.18); --ui-border2:rgba(60,60,67,0.30);
-  --header-bg:#FFFFFF; --header-text:#000000; --canvas-bg:#FFFFFF;
-  --doc-bg:#C7C7CC;
-  --page-bg:#FFFFFF;
-  --page-fg:#D0D2D3;
-  --page-w:794px; --page-h:1123px;
-  --shadow:0 1px 3px rgba(0,0,0,0.08),0 1px 2px rgba(0,0,0,0.05);
-  --shadow-lg:0 6px 24px rgba(0,0,0,0.10),0 2px 8px rgba(0,0,0,0.06);
-  --shadow-page:0 4px 20px rgba(0,0,0,0.14),0 1px 4px rgba(0,0,0,0.08);
-  --r:10px; --r-sm:7px; --r-lg:14px; --r-full:999px;
-  --tr:0.18s ease;
-}
-[data-theme="dark"] {
-  --ink:#FFFFFF; --ink-soft:rgba(235,235,245,0.60);
-  --paper:#1C1C1E; --paper-warm:#2C2C2E;
-  --accent:#0A84FF; --accent-lt:rgba(10,132,255,0.15);
-  --success:#30D158; --destructive:#FF453A; --warn:#FF9F0A;
-  --ui-bg:#000000; --ui-border:rgba(84,84,88,0.55); --ui-border2:rgba(84,84,88,0.75);
-  --header-bg:#1C1C1E; --header-text:#FFFFFF; --canvas-bg:#FFFFFF;
-  --doc-bg:#1A1A1A;
-  --shadow:0 1px 3px rgba(0,0,0,0.4),0 1px 2px rgba(0,0,0,0.3);
-  --shadow-lg:0 6px 24px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.3);
-  --shadow-page:0 4px 20px rgba(0,0,0,0.55),0 1px 4px rgba(0,0,0,0.3);
-}
-/* ── NARROW SCREENS (iPhone etc.) ── */
-
-/* ── PWA SPLASH SCREEN ── */
-
-/* Rather than hiding controls, the header scrolls horizontally so every
-   button stays reachable with a swipe on small screens. */
-@media (max-width:760px){
-  header{
-    height:48px;padding:0 10px;gap:6px;
-    overflow-x:auto;overflow-y:hidden;
-    -webkit-overflow-scrolling:touch;
-    scrollbar-width:none;
-  }
-  header::-webkit-scrollbar{display:none}
-  .logo,.vsep,.htabs,.hactions{flex-shrink:0}
-  .logo-mark{height:19px}
-  .logo-word{font-size:15px}
-  .htab{white-space:nowrap}
-  .hbtn{white-space:nowrap}
 
   #panel-left{width:min(70vw,278px)}
   #panel-right{width:min(46vw,236px)}
@@ -1440,35 +1357,49 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 #pwa-install-btn:active{transform:scale(0.97)}
 
 /* ── SPLASH SCREEN ── */
+/* Hidden everywhere by default; shown only inside the PWA (standalone).     */
 #splash{
   position:fixed;inset:0;z-index:9999;
+  display:none;                        /* browser: never shown               */
+  flex-direction:column;
+  align-items:center;justify-content:center;
+  gap:36px;
   background:var(--ui-bg);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:16px;
+  opacity:1;
+  transition:opacity 0.4s ease;
   pointer-events:none;
-  transition:opacity 0.45s ease;
 }
-#splash.hiding{opacity:0;}
-#splash.hidden{display:none;}
+@media (display-mode: standalone){
+  #splash{ display:flex; }             /* PWA: shown from first paint        */
+  #splash.hiding{ opacity:0; }
+  #splash.hidden{ display:none !important; }
+}
+/* Logo wrapper: fixed size prevents layout shift while image loads */
+#splash-mark-wrap{
+  width:60px;height:72px;
+  display:flex;align-items:center;justify-content:center;
+}
 #splash-mark{
-  width:52px;height:auto;
-  animation:splash-pulse 1.6s ease-in-out infinite;
+  width:60px;height:72px;
+  object-fit:contain;
 }
-@keyframes splash-pulse{
-  0%,100%{opacity:1;}
-  50%{opacity:0.45;}
+/* iOS-style spinner */
+#splash-spinner{
+  width:28px;height:28px;
+  border-radius:50%;
+  border:2.5px solid var(--ui-border);
+  border-top-color:var(--accent);
+  animation:splash-spin 0.75s linear infinite;
 }
-#splash-name{
-  font-family:-apple-system,'SF Pro Display','Helvetica Neue',sans-serif;
-  font-size:22px;font-weight:700;letter-spacing:-0.5px;
-  color:var(--ink);
-}
+@keyframes splash-spin{ to{ transform:rotate(360deg); } }
 </style>
 </head>
 <body>
 <div id="splash" aria-hidden="true">
-  <img id="splash-mark" src="./icons/logo-mark.png" alt="" width="52" height="63">
-  <span id="splash-name">MagicWrite</span>
+  <div id="splash-mark-wrap">
+    <img id="splash-mark" src="./icons/logo-mark.png" alt="" width="60" height="72">
+  </div>
+  <div id="splash-spinner"></div>
 </div>
 </div>
 <div id="shell">

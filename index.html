@@ -113,6 +113,29 @@
      in the page lifecycle). Stored globally so the install-modal IIFE can
      read it regardless of when it runs. -->
 <script>
+/* ── iOS PWA VIEWPORT HEIGHT FIX ──────────────────────────────────────────
+   On iOS in standalone (PWA) mode, 100dvh can be calculated before the
+   system chrome settles, leaving a coloured bar at the bottom. We drive
+   #shell height from window.innerHeight, updated on every resize and
+   visualViewport change, so the bar never appears – not even after an iPad
+   split-screen round-trip.
+   ─────────────────────────────────────────────────────────────────────── */
+(function(){
+  function _setH(){
+    var h = (window.visualViewport ? window.visualViewport.height : window.innerHeight);
+    document.documentElement.style.setProperty('--app-height', h + 'px');
+  }
+  _setH();
+  window.addEventListener('resize', _setH, {passive:true});
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', _setH, {passive:true});
+  }
+  /* Also re-run after a short delay on load to catch iOS lazy recalculation */
+  window.addEventListener('load', function(){
+    _setH();
+    setTimeout(_setH, 300);
+  }, {once:true, passive:true});
+})();
 window.addEventListener('beforeinstallprompt', function(e){
   e.preventDefault();
   window._mwDeferredPrompt = e;
@@ -220,7 +243,7 @@ window.addEventListener('appinstalled', function(){
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body{
-  height:100%;
+  height:100dvh;
   font-family:-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif;
   font-size:13px;
   background:var(--ui-bg);color:var(--ink);
@@ -242,7 +265,7 @@ input,textarea,select{
 }
 
 /* ── SHELL ── */
-#shell{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
+#shell{display:flex;flex-direction:column;height:var(--app-height,100dvh);overflow:hidden}
 #shell-body{display:flex;flex:1;min-height:0;overflow:hidden}
 #shell.compose-mode #panel-left{display:none}
 #shell.compose-mode #psec-alphabet,
@@ -264,11 +287,17 @@ header{
   header{
     padding-top:env(safe-area-inset-top);
   }
-  /* Force html and body to the same height as #shell so no background layer
-     bleeds through at the bottom. Without this, height:100% can be shorter
-     than 100dvh on iOS, exposing --ui-bg (black) or --doc-bg beneath the shell. */
+  /* On iOS PWA, html/body must always fill the full dynamic viewport.
+     The JS --app-height variable keeps #shell pinned to window.innerHeight
+     on every resize/orientation change, eliminating the bottom black bar. */
   html,body{
     height:100dvh;
+    min-height:-webkit-fill-available;
+  }
+  /* Absorb the home-indicator safe area at the bottom so no bare
+     background colour is exposed beneath the shell. */
+  #shell{
+    padding-bottom:env(safe-area-inset-bottom);
   }
 }
 .logo{

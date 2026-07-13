@@ -277,7 +277,7 @@ input,textarea,select{
 }
 
 /* ── SHELL ── */
-#shell{display:flex;flex-direction:column;height:calc(100% - var(--keyboard-h));overflow:hidden}
+#shell{position:fixed;inset:0;bottom:var(--keyboard-h,0px);display:flex;flex-direction:column;overflow:hidden}
 #shell-body{display:flex;flex:1;min-height:0;overflow:hidden}
 #shell.compose-mode #panel-left{display:none}
 #shell.compose-mode #psec-alphabet,

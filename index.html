@@ -2,7 +2,12 @@
 <html lang="de" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<!--
+Source - https://stackoverflow.com/a/66012902
+Posted by PeteLe
+Retrieved 2026-07-13, License - CC BY-SA 4.0
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>MagicWrite</title>
 
 <!-- PWA: installable app metadata -->
@@ -252,18 +257,25 @@ window.addEventListener('appinstalled', function(){
 
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{
-  height:100dvh;
+  /* No height constraint here, no overflow:hidden.
+     overflow:hidden on html creates a WebKit clipping context at the dvh
+     boundary, which iOS calculates wrong on PWA startup → clips the fixed
+     #shell → black bar at the bottom.
+     overscroll-behavior:none replaces overflow:hidden for bounce prevention. */
+  overscroll-behavior:none;
   font-family:-apple-system,'SF Pro Text','Helvetica Neue',Arial,sans-serif;
   font-size:13px;
   background:var(--ui-bg);color:var(--ink);
-  overflow:hidden;
   -webkit-font-smoothing:antialiased;
-  /* Block browser pinch/double-tap zoom outside the document canvas;
-     the document page itself has its own zoom (see #doc-scroll below). */
   touch-action:manipulation;
 }
 body{
-  height:100%;
+  /* SO approach (stackoverflow.com/a/66012902): 100vh with viewport-fit=cover
+     = full screen height in iOS PWA standalone. overflow:hidden on body (not
+     html) blocks scrolling without creating a clipping context for #shell.   */
+  height:100vh;
+  overflow:hidden;
+  overscroll-behavior:none;
 }
 /* ── NO TEXT SELECTION ANYWHERE ── */
 *{

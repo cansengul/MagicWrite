@@ -279,7 +279,7 @@ input,textarea,select{
 }
 
 /* ── SHELL ── */
-#shell{display:flex;flex-direction:column;height:100dvh;overflow:hidden;background:var(--doc-bg)}
+#shell{display:flex;flex-direction:column;height:100dvh;overflow:hidden}
 #shell-body{display:flex;flex:1;min-height:0;overflow:hidden}
 #shell.compose-mode #panel-left{display:none}
 #shell.compose-mode #psec-alphabet,
@@ -301,9 +301,13 @@ header{
   header{
     padding-top:env(safe-area-inset-top);
   }
-  #shell{
-    padding-bottom:env(safe-area-inset-bottom);
-    box-sizing:border-box;
+  /* In PWA standalone mode the safe-area-inset-bottom zone (home indicator)
+     is visible below the shell. Set html/body background to --doc-bg so that
+     zone shows the same grey as the document scroll area instead of the pure
+     black of --ui-bg (dark mode). No padding on #shell – content fills
+     100dvh naturally and the home indicator simply overlays it. */
+  html,body{
+    background:var(--doc-bg);
   }
 }
 .logo{

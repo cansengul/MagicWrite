@@ -286,6 +286,12 @@ body{
 input,textarea,select{
   user-select:text;
   -webkit-user-select:text;
+  /* iOS Safari auto-zooms the page when a focused form field's computed
+     font-size is below 16px, and never reliably zooms back out on blur
+     (worse here since native pinch-zoom is blocked elsewhere in this file).
+     16px is the safe floor for every field, so this baseline plus the
+     specific overrides below all use 16px. */
+  font-size:16px;
 }
 
 /* ── SHELL ── */
@@ -591,7 +597,7 @@ select{
   background:var(--paper-warm);
   border:0.5px solid var(--ui-border);
   border-radius:var(--r-sm);
-  font-family:-apple-system,sans-serif;font-size:13px;
+  font-family:-apple-system,sans-serif;font-size:16px;
   color:var(--ink);cursor:pointer;outline:none;
   box-shadow:0 1px 2px rgba(0,0,0,0.05);
   -webkit-appearance:none;appearance:none;
@@ -734,7 +740,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 }
 #txt{
   flex:1;
-  font-family:-apple-system,'SF Pro Text',sans-serif;font-size:14px;
+  font-family:-apple-system,'SF Pro Text',sans-serif;font-size:16px;
   padding:10px 12px;
   background:var(--paper-warm);
   border:0.5px solid var(--ui-border);border-radius:var(--r);
@@ -833,7 +839,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 .fmt-custom-input{
   width:100%;padding:8px 10px;
   background:var(--paper-warm);border:0.5px solid var(--ui-border);
-  border-radius:var(--r-sm);font-size:13px;color:var(--ink);outline:none;
+  border-radius:var(--r-sm);font-size:16px;color:var(--ink);outline:none;
   font-family:-apple-system,sans-serif;
 }
 .fmt-custom-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
@@ -1121,7 +1127,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   width:100%;padding:11px 14px;
   background:var(--paper);
   border:1px solid var(--ui-border2);border-radius:var(--r);
-  font-family:-apple-system,sans-serif;font-size:14px;color:var(--ink);
+  font-family:-apple-system,sans-serif;font-size:16px;color:var(--ink);
   outline:none;transition:border-color .15s,box-shadow .15s;
   -webkit-appearance:none;
 }
@@ -6705,6 +6711,25 @@ if('serviceWorker' in navigator){
     }
     lastTouchEnd = now;
   }, { passive:false });
+
+  // Safety net: all form fields are styled at >=16px so iOS should never
+  // auto-zoom on focus in the first place, but if the page is somehow left
+  // zoomed in after a field blurs (keyboard dismiss races, older iOS
+  // versions, etc.), force the visual viewport back to scale 1 -- except
+  // inside the document canvas, which owns its own pinch-zoom.
+  const viewportMeta = document.querySelector('meta[name="viewport"]');
+  const baseViewportContent = viewportMeta ? viewportMeta.getAttribute('content') : null;
+  function resetZoom(){
+    if(!viewportMeta || !baseViewportContent) return;
+    viewportMeta.setAttribute('content', baseViewportContent + ', maximum-scale=1.0');
+    setTimeout(function(){ viewportMeta.setAttribute('content', baseViewportContent); }, 350);
+  }
+  document.addEventListener('focusout', function(e){
+    const el = e.target;
+    if(el && el.closest && el.closest('input,textarea,select') && !el.closest('#doc-scroll')){
+      resetZoom();
+    }
+  }, true);
 })();
 </script>
 

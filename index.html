@@ -113,6 +113,37 @@
      in the page lifecycle). Stored globally so the install-modal IIFE can
      read it regardless of when it runs. -->
 <script>
+/* ── iOS PWA KEYBOARD AVOIDANCE ───────────────────────────────────────────
+   On iOS in standalone mode the layout viewport never shrinks when the
+   software keyboard opens, so fixed elements and bottom bars get covered.
+   We use visualViewport to measure the exposed height and set --keyboard-h,
+   which CSS uses to shrink #shell and shift fixed modals upward.
+   This runs ONLY on resize events – not on page load – so it cannot
+   trigger the bottom-bar bug (which needs the initial dvh calc to be stable).
+   ─────────────────────────────────────────────────────────────────────── */
+(function(){
+  if(!window.visualViewport) return;
+  var vv = window.visualViewport;
+  var root = document.documentElement;
+  var ticking = false;
+
+  function applyKeyboardHeight(){
+    ticking = false;
+    // keyboard height = gap between layout viewport bottom and visual viewport bottom
+    var kh = Math.max(0, window.innerHeight - vv.offsetTop - vv.height);
+    root.style.setProperty('--keyboard-h', kh + 'px');
+  }
+
+  function schedule(){
+    if(!ticking){
+      ticking = true;
+      requestAnimationFrame(applyKeyboardHeight);
+    }
+  }
+
+  vv.addEventListener('resize', schedule, { passive: true });
+  vv.addEventListener('scroll', schedule, { passive: true });
+})();
 window.addEventListener('beforeinstallprompt', function(e){
   e.preventDefault();
   window._mwDeferredPrompt = e;
@@ -148,6 +179,7 @@ window.addEventListener('appinstalled', function(){
    GOODNOTES / iPadOS DESIGN SYSTEM
    ═══════════════════════════════════════ */
 :root {
+  --keyboard-h:0px;
   --ink:#000000; --ink-soft:rgba(60,60,67,0.60);
   --paper:#FFFFFF; --paper-warm:#F2F2F7;
   --accent:#007AFF; --accent-lt:rgba(0,122,255,0.10);
@@ -245,7 +277,7 @@ input,textarea,select{
 }
 
 /* ── SHELL ── */
-#shell{display:flex;flex-direction:column;height:100%;overflow:hidden}
+#shell{display:flex;flex-direction:column;height:calc(100% - var(--keyboard-h));overflow:hidden}
 #shell-body{display:flex;flex:1;min-height:0;overflow:hidden}
 #shell.compose-mode #panel-left{display:none}
 #shell.compose-mode #psec-alphabet,
@@ -273,6 +305,26 @@ header{
      height, so the layout compresses slightly rather than overflowing. */
   #shell{
     padding-bottom:env(safe-area-inset-bottom);
+  }
+  /* ── KEYBOARD AVOIDANCE ──────────────────────────────────────────────
+     --keyboard-h is set by JS via visualViewport.resize (0px at rest).
+     #shell shrinks so .text-bar / #txt stay visible above the keyboard.
+     Fixed-position modals cover inset:0 (layout viewport, not visual),
+     so we push their content up with padding-bottom.                   */
+  #login-modal,
+  #settings-modal,
+  #fmt-modal,
+  #ex-modal,
+  #limit-modal,
+  #unknown-modal,
+  #pwa-install-modal{
+    padding-bottom:var(--keyboard-h, 0px);
+    box-sizing:border-box;
+  }
+  /* Settings sheet slides from bottom — cap its height so it never
+     extends behind the keyboard when inputs are focused.              */
+  .smodal-inner{
+    max-height:calc(86dvh - var(--keyboard-h, 0px));
   }
 }
 .logo{
@@ -802,7 +854,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 /* ── TOAST ── */
 #toast{
-  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  position:fixed;bottom:calc(24px + var(--keyboard-h, 0px));left:50%;transform:translateX(-50%);
   background:rgba(28,28,28,0.88);color:#fff;
   font-family:-apple-system,'SF Pro Text',sans-serif;
   font-size:13px;font-weight:500;

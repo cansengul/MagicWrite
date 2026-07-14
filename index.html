@@ -2406,8 +2406,6 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
-<!-- pako: gzip compression for the glyph payload before it goes to Firebase -->
-<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script>
 'use strict';
 
@@ -2448,132 +2446,6 @@ const _dirty = {
   prefs:       true
 };
 let _defaultFormatSaved = false; // becomes true once user clicks "Als Standard festlegen"
-
-// ═══════════════════════════════════════════════════════════
-// GLYPH SYNC v3 — per-character storage + compression
-// ═══════════════════════════════════════════════════════════
-// v2 (old): the whole glyph set lived in ONE JSON string field 'glyphs'.
-// Any change — even to a single character — re-uploaded/re-downloaded the
-// entire blob (up to ~3 MB).
-// v3 (this): every character is its own node under 'glyphChars/{encodedKey}',
-// gzip-compressed. Only characters that actually changed are transmitted.
-// Nothing about the drawn strokes themselves is altered — this only changes
-// how the exact same data travels over the wire, so glyph quality is 100%
-// unaffected.
-const GLYPH_SCHEMA_VERSION = 3;
-
-// Firebase keys may not contain '.', '#', '$', '[', ']', '/'. A character
-// (incl. multi-codepoint emoji/custom symbols) is encoded as base64url of its
-// UTF-8 bytes, which is always safe and fully reversible.
-function _encodeGlyphKey(ch){
-  const bytes = new TextEncoder().encode(ch);
-  let bin = '';
-  bytes.forEach(b => { bin += String.fromCharCode(b); });
-  return 'g_' + btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
-function _decodeGlyphKey(key){
-  let b64 = key.slice(2).replace(/-/g,'+').replace(/_/g,'/');
-  while(b64.length % 4) b64 += '=';
-  const bin = atob(b64);
-  const bytes = new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-  return new TextDecoder().decode(bytes);
-}
-
-// Gzip a JSON string into a compact base64 string (Firebase only stores
-// strings/numbers). Falls back to the plain string if pako failed to load,
-// so a CDN hiccup never breaks syncing — it just skips the compression win.
-function _gzipToB64(str){
-  if(typeof pako === 'undefined') return str;
-  try{
-    const deflated = pako.deflate(str);
-    let bin = '';
-    deflated.forEach(b => { bin += String.fromCharCode(b); });
-    return 'z:' + btoa(bin);
-  }catch(e){ return str; }
-}
-function _gunzipFromB64(str){
-  if(typeof str !== 'string' || !str.startsWith('z:')) return str; // not compressed
-  try{
-    const bin = atob(str.slice(2));
-    const bytes = new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
-    return pako.inflate(bytes, {to:'string'});
-  }catch(e){ return '[]'; }
-}
-function _packVariants(variants){
-  // Compress only when it actually helps. Gzip has fixed per-stream overhead
-  // and base64 adds ~33% on top of the compressed bytes, so for a character
-  // with very few strokes the "compressed" form can end up LARGER than the
-  // plain JSON. Always pick whichever representation is smaller, so a
-  // character in Firebase never takes more space than the old single-blob
-  // format did for that same character.
-  const raw = JSON.stringify(variants);
-  const compressed = _gzipToB64(raw);
-  return (compressed.length < raw.length) ? compressed : raw;
-}
-function _unpackVariants(packed){
-  try{ const v = JSON.parse(_gunzipFromB64(packed)); return Array.isArray(v) ? v : []; }
-  catch(e){ return []; }
-}
-
-// Last known glyph state that matches the server, kept in memory. Every push
-// diffs the live store against this snapshot so we only ever transmit
-// characters that actually changed. Updated whenever local state is
-// confirmed in sync with the cloud (after a successful push or a load that
-// matches what's already local).
-let _glyphSnapshot = {};
-function _snapshotGlyphs(){ _glyphSnapshot = JSON.parse(JSON.stringify(store.g||{})); }
-function _dirtyGlyphChars(){
-  const cur = store.g||{}, prev = _glyphSnapshot||{};
-  const keys = new Set([...Object.keys(cur), ...Object.keys(prev)]);
-  const out = [];
-  for(const ch of keys){
-    if(JSON.stringify(cur[ch]||null) !== JSON.stringify(prev[ch]||null)) out.push(ch);
-  }
-  return out;
-}
-
-// Rebuilds the legacy {_v:2, g:{ch:variants}} JSON string that
-// GlyphStore.fromJSON() and all existing merge/conflict logic already expect,
-// from the new per-character 'glyphChars' map downloaded from Firebase
-// ({ encodedKey: gzippedString }). This means none of the existing
-// merge-safety logic (which never discards local-only variants) has to
-// change — it just receives its input reconstructed from the new format.
-function _glyphCharsToLegacyJSON(glyphChars){
-  const g = {};
-  if(glyphChars){
-    for(const key of Object.keys(glyphChars)){
-      try{ g[_decodeGlyphKey(key)] = _unpackVariants(glyphChars[key]); }catch(e){}
-    }
-  }
-  return JSON.stringify({_v:2, g});
-}
-
-// One-time migration per account: if this Firebase account still has data in
-// the old single-blob 'glyphs' field, convert it to the new per-character
-// 'glyphChars' structure and remove the old field. Idempotent — safe to call
-// on every login, it no-ops once _schemaV is already current.
-async function _migrateGlyphSchemaIfNeeded(uid){
-  try{
-    const verSnap = await fbDb.ref(`users/${uid}/_schemaV`).once('value');
-    if((verSnap.val()||0) >= GLYPH_SCHEMA_VERSION) return;
-    const oldSnap = await fbDb.ref(`users/${uid}/glyphs`).once('value');
-    const oldStr = oldSnap.val();
-    const updates = { _schemaV: GLYPH_SCHEMA_VERSION };
-    if(oldStr){
-      const oldObj = _parseGlyphs(oldStr);
-      for(const ch of Object.keys(oldObj)){
-        updates[`glyphChars/${_encodeGlyphKey(ch)}`] = _packVariants(oldObj[ch]);
-      }
-      updates.glyphs = null; // old blob no longer needed — freed for good
-    }
-    await fbDb.ref(`users/${uid}`).update(updates);
-  }catch(e){
-    // Non-fatal — worst case we simply retry the migration on the next login.
-    console.warn('MagicWrite: Glyph-Schema-Migration fehlgeschlagen, wird beim nächsten Login erneut versucht.', e);
-  }
-}
 
 // ── APPLE PENCIL DETECTION ──────────────────────────────────
 // Once a pen is detected, finger-touches on draw surfaces are ignored unless _allowFinger is true.
@@ -4760,13 +4632,11 @@ async function confirmDeleteAll(){
   if(fbUser && fbDb && fbUser.emailVerified){
     try{
       await fbDb.ref(`users/${fbUser.uid}`).update({
-        glyphs:      null,       // legacy v2 field — removed if still present
-        glyphChars:  null,       // v3 per-character storage — wipe entirely
+        glyphs:      store.toJSON(),
         customChars: '[]',
         _updatedAt:  firebase.database.ServerValue.TIMESTAMP,
         _session:    SESSION_ID
       });
-      _snapshotGlyphs(); // local store is now empty and matches the (now-empty) cloud
     }catch(e){}
   }
   buildGrid(); refreshChar(); updateProg(); schedRender();
@@ -5755,7 +5625,6 @@ async function loadFromFirebase(){
   setSyncStatus('syncing');
   const timeoutMs = 12000;
   const uid = fbUser.uid;
-  await _migrateGlyphSchemaIfNeeded(uid);
   try{
     // ── SMART LOAD: check _updatedAt before pulling the heavy glyphs payload ──
     // Step 1: fetch only the tiny timestamp field (≈ 30 bytes)
@@ -5794,10 +5663,6 @@ async function loadFromFirebase(){
         new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
       ]);
       data = snap.val();
-      // v3: reconstruct the legacy {_v:2,g:{...}} glyphs string from the
-      // per-character 'glyphChars' map so all existing merge logic below
-      // (which expects data.glyphs) keeps working unchanged.
-      if(data && data.glyphChars) data.glyphs = _glyphCharsToLegacyJSON(data.glyphChars);
       // Cache the new timestamp so next load can skip if unchanged
       if(data && data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
     }
@@ -5809,7 +5674,6 @@ async function loadFromFirebase(){
       // If local glyphs are marked dirty (e.g. scanned before a mid-session reload),
       // upload them now — the cloud timestamp matched but local has newer data.
       if(_dirty.glyphs && store.count() > 0) scheduleSync();
-      else _snapshotGlyphs(); // confirmed in sync with cloud, baseline for future diffs
       setSyncStatus('synced');
       return;
     }
@@ -5835,7 +5699,6 @@ async function loadFromFirebase(){
     // ── CASE B: No local glyphs → just apply cloud silently
     if(localCount === 0){
       applyFirebaseData(data, true);
-      _snapshotGlyphs();
       setSyncStatus('synced');
       if(cloudCount > 0) showToast('Konto-Zeichen geladen (' + cloudCount + ' Zeichen)');
       return;
@@ -5872,7 +5735,6 @@ async function loadFromFirebase(){
       // Perfectly identical → apply non-glyph data only, no prompt
       const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
       applyFirebaseData(dataWithoutGlyphs, true);
-      _snapshotGlyphs();
       setSyncStatus('synced');
       return;
     }
@@ -5938,10 +5800,6 @@ function mergeUseCloud(){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
     applyFirebaseData(d, true);
-    // Local now exactly matches the cloud (no upload needed) — update the
-    // diff baseline so a later, unrelated change doesn't re-send characters
-    // that were already in sync.
-    _snapshotGlyphs();
   }
   buildCustomGrid(); // always refresh custom-char grid after merge
   if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
@@ -6000,9 +5858,6 @@ function subscribeToFirebase(){
     const data = snap.val();
     if(!data) return;
     if(data._session === SESSION_ID) return; // our own write, ignore
-    // v3: reconstruct legacy glyphs string from the per-character map so the
-    // rest of this listener's logic (unchanged) keeps working.
-    if(data.glyphChars) data.glyphs = _glyphCharsToLegacyJSON(data.glyphChars);
 
     // ── Protect local glyphs while the user is actively scanning ──
     // If we have pending local glyph changes (not yet uploaded), a real-time
@@ -6036,7 +5891,6 @@ function subscribeToFirebase(){
     if(data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
     // Cloud data is now applied — local is in sync, clear the pending-upload flag
     if(data.glyphs) localStorage.setItem('mw-glyphs-dirty', '0');
-    _snapshotGlyphs();
     setSyncStatus('synced');
     showToast('↻ Von anderem Gerät synchronisiert');
   };
@@ -6225,17 +6079,8 @@ async function pushToFirebase(){
   Object.keys(_dirty).forEach(k => _dirty[k] = false);
 
   try{
-    const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP, _schemaV: GLYPH_SCHEMA_VERSION };
-    if(sending.glyphs){
-      // v3: only send the characters that actually changed since the last
-      // confirmed-in-sync snapshot, each gzip-compressed. A single new
-      // character no longer re-uploads the whole (up to ~3 MB) glyph set.
-      const _changedChars = _dirtyGlyphChars();
-      for(const ch of _changedChars){
-        const variants = store.g[ch];
-        payload['glyphChars/' + _encodeGlyphKey(ch)] = (variants && variants.length) ? _packVariants(variants) : null;
-      }
-    }
+    const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP };
+    if(sending.glyphs)      payload.glyphs      = store.toJSON();
     if(sending.customChars) payload.customChars  = JSON.stringify(customChars);
     if(sending.settings){
       const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
@@ -6286,7 +6131,6 @@ async function pushToFirebase(){
       }catch(_){}
       // Glyphs are now in sync — clear the pending-upload flag
       localStorage.setItem('mw-glyphs-dirty', '0');
-      _snapshotGlyphs();
     }
   }catch(err){
     // Restore dirty flags so next sync retries the failed fields

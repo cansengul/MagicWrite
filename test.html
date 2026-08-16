@@ -5724,28 +5724,37 @@ async function _loadGlyphsFromFirebase(uid, timeoutMs = 12000){
     new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
   ]);
 
-  const raw = snap.val() || {};
-  const glyphs = {};
+  const raw = snap.val();
 
-  Object.keys(raw).forEach(key => {
-    const ch = _glyphFirebaseChar(key);
-    glyphs[ch] = raw[key];
-  });
+  // ── ALTE FIREBASE-VERSION ───────────────────────────────
+  // glyphs wurde früher als JSON-String gespeichert.
+  if(typeof raw === 'string'){
+    try{
+      return _parseGlyphs(raw) || {};
+    }catch(e){
+      console.warn(
+        'Firebase: Alte Glyph-Daten konnten nicht geparst werden',
+        e
+      );
+      return {};
+    }
+  }
 
-  return glyphs;
-}
+  // ── NEUE FIREBASE-VERSION ──────────────────────────────
+  // glyphs/{encodedCharacter}: glyphData
+  if(raw && typeof raw === 'object'){
 
-function _glyphsJSON(){
-  const obj = _glyphObjectFromStore();
+    const result = {};
 
-  return JSON.stringify(
-    Object.keys(obj)
-      .sort()
-      .reduce((o,k) => {
-        o[k] = obj[k];
-        return o;
-      }, {})
-  );
+    Object.keys(raw).forEach(key => {
+      const ch = _glyphFirebaseChar(key);
+      result[ch] = raw[key];
+    });
+
+    return result;
+  }
+
+  return {};
 }
 
 
@@ -5814,40 +5823,103 @@ async function loadFromFirebase(){
 
     }else{
 
-      // ── METADATA + GLYPHS ───────────────────────────────
-      // Glyphs liegen jetzt einzeln unter /glyphs.
-      const [sSnap, pSnap, ccSnap, sessSnap, glyphSnap] =
-        await Promise.all([
-          fbDb.ref(`users/${uid}/settings`).once('value'),
-          fbDb.ref(`users/${uid}/preferences`).once('value'),
-          fbDb.ref(`users/${uid}/customChars`).once('value'),
-          fbDb.ref(`users/${uid}/_session`).once('value'),
-          fbDb.ref(`users/${uid}/glyphs`).once('value')
-        ]);
+      // ── METADATA + GLYPHS ────────────────────────────────────
+// Unterstützt sowohl die alte String-Struktur als auch
+// die neue Einzel-Glyph-Struktur.
 
-      const glyphRaw = glyphSnap.val() || {};
-      const glyphObj = {};
+const [
+  sSnap,
+  pSnap,
+  ccSnap,
+  sessSnap,
+  glyphSnap
+] = await Promise.all([
 
-      Object.keys(glyphRaw).forEach(key => {
-        glyphObj[_glyphFirebaseChar(key)] = glyphRaw[key];
-      });
+  fbDb.ref(`users/${uid}/settings`).once('value'),
 
-      data = {
-        settings:    sSnap.val(),
-        preferences: pSnap.val(),
-        customChars: ccSnap.val(),
-        _session:    sessSnap.val(),
-        _updatedAt:  cloudTs,
-        glyphs:      glyphObj
-      };
+  fbDb.ref(`users/${uid}/preferences`).once('value'),
 
-      if(cloudTs){
-        localStorage.setItem(
-          _GLYPH_TS_KEY,
-          String(cloudTs)
-        );
-      }
-    }
+  fbDb.ref(`users/${uid}/customChars`).once('value'),
+
+  fbDb.ref(`users/${uid}/_session`).once('value'),
+
+  fbDb.ref(`users/${uid}/glyphs`).once('value')
+]);
+
+const rawGlyphs = glyphSnap.val();
+
+let glyphObj = {};
+
+
+// ── ALTES FORMAT ─────────────────────────────────────────
+// glyphs = JSON-String
+if(typeof rawGlyphs === 'string'){
+
+  try{
+
+    glyphObj =
+      _parseGlyphs(rawGlyphs) || {};
+
+  }catch(e){
+
+    console.warn(
+      'Firebase: Fehler beim Parsen der alten Glyph-Struktur',
+      e
+    );
+
+    glyphObj = {};
+  }
+
+
+// ── NEUES FORMAT ────────────────────────────────────────
+// glyphs = { encodedCharacter: glyphData }
+}else if(
+  rawGlyphs &&
+  typeof rawGlyphs === 'object'
+){
+
+  Object.keys(rawGlyphs).forEach(key => {
+
+    const ch =
+      _glyphFirebaseChar(key);
+
+    glyphObj[ch] =
+      rawGlyphs[key];
+
+  });
+}
+
+
+data = {
+
+  settings:
+    sSnap.val(),
+
+  preferences:
+    pSnap.val(),
+
+  customChars:
+    ccSnap.val(),
+
+  _session:
+    sessSnap.val(),
+
+  _updatedAt:
+    cloudTs,
+
+  glyphs:
+    glyphObj
+};
+
+
+// Timestamp speichern
+if(cloudTs){
+
+  localStorage.setItem(
+    _GLYPH_TS_KEY,
+    String(cloudTs)
+  );
+}
 
 
     // ── GLYPHS CONFIRMED IN SYNC ──────────────────────────
@@ -6549,49 +6621,49 @@ function applyFirebaseData(
 ){
 
   // ── Glyphs ──────────────────────────────────────────────
-  try{
+try{
 
-    if(data.glyphs){
+  if(data.glyphs){
 
-      const glyphObj =
-        typeof data.glyphs === 'string'
-          ? _parseGlyphs(data.glyphs)
-          : data.glyphs;
+    const glyphObj =
+      typeof data.glyphs === 'string'
+        ? _parseGlyphs(data.glyphs)
+        : data.glyphs;
 
-      store.fromJSON(
-        JSON.stringify(glyphObj)
-      );
+    store.fromJSON(
+      JSON.stringify(glyphObj)
+    );
 
-      _checkMigration();
+    _checkMigration();
 
-      openDB().then(() => {
+    openDB().then(() => {
 
-        db.transaction(
-          'profiles',
-          'readwrite'
-        )
-        .objectStore('profiles')
-        .put({
-          name: 'default',
-          g: store.toJSON(),
-          ts: Date.now()
-        });
-
+      db.transaction(
+        'profiles',
+        'readwrite'
+      )
+      .objectStore('profiles')
+      .put({
+        name: 'default',
+        g: store.toJSON(),
+        ts: Date.now()
       });
 
-      buildGrid();
-      refreshChar();
-      updateProg();
-      schedRender();
-    }
+    });
 
-  }catch(e){
-
-    console.warn(
-      'Firebase: Fehler beim Laden der Zeichen',
-      e
-    );
+    buildGrid();
+    refreshChar();
+    updateProg();
+    schedRender();
   }
+
+}catch(e){
+
+  console.warn(
+    'Firebase: Fehler beim Laden der Zeichen',
+    e
+  );
+}
 
 
   // ── Custom chars ────────────────────────────────────────

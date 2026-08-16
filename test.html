@@ -5610,8 +5610,76 @@ async function signOutUser(){
   }
 }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//PASTE AREA BEGIN
+
 // ── FIREBASE LOAD ──────────────────────────────────────────
 let _pendingFirebaseData = null;
+let _lastSyncedGlyphs = {}; // Cacht den letzten Stand für Bandbreiten-effiziente Delta-Updates
 
 async function loadFromFirebase(){
   if(!fbUser || !fbDb) return;
@@ -5691,8 +5759,14 @@ async function loadFromFirebase(){
 
     const localKeys  = Object.keys(store.g || {});
     const localCount = localKeys.length;
-    const cloudGlyphsStr = data.glyphs || null;
-    const cloudObj = _parseGlyphs(cloudGlyphsStr);
+    
+    // Support für altes String-Format UND neues Objekt-Format für Glyphs
+    const cloudGlyphsRaw = data.glyphs || null;
+    let cloudObj = {};
+    if(cloudGlyphsRaw) {
+        cloudObj = typeof cloudGlyphsRaw === 'string' ? _parseGlyphs(cloudGlyphsRaw) : cloudGlyphsRaw;
+    }
+    
     const cloudKeys  = Object.keys(cloudObj);
     const cloudCount = cloudKeys.length;
 
@@ -5830,7 +5904,7 @@ function mergeCombine(){
     // ── Merge glyphs: add cloud chars local doesn't have ──
     if(d.glyphs){
       try{
-        const mergeObj = _parseGlyphs(d.glyphs);
+        const mergeObj = typeof d.glyphs === 'string' ? _parseGlyphs(d.glyphs) : d.glyphs;
         Object.keys(mergeObj).forEach(ch => {
           if(!store.has(ch)){ store.g[ch] = mergeObj[ch]; }
         });
@@ -5875,7 +5949,8 @@ function subscribeToFirebase(){
     if(localCount > 0 && data.glyphs !== undefined){
       let cloudCount = 0;
       try{
-        cloudCount = Object.keys(_parseGlyphs(data.glyphs)).length;
+        const cloudObj = typeof data.glyphs === 'string' ? _parseGlyphs(data.glyphs) : data.glyphs;
+        cloudCount = Object.keys(cloudObj).length;
       }catch(_){}
       if(cloudCount < localCount){
         // Cloud has fewer glyphs than local — skip glyph portion, apply rest
@@ -5909,7 +5984,13 @@ function applyFirebaseData(data, isInitialLoad){
   // Glyphs
   try{
     if(data.glyphs){
-      store.fromJSON(data.glyphs);
+      const isString = typeof data.glyphs === 'string';
+      const glyphsObj = isString ? _parseGlyphs(data.glyphs) : data.glyphs;
+      
+      // Update Delta-Cache für zukünftige Uploads
+      _lastSyncedGlyphs = JSON.parse(JSON.stringify(glyphsObj));
+      
+      store.fromJSON(isString ? data.glyphs : JSON.stringify(glyphsObj));
       _checkMigration();
       openDB().then(()=>{
         db.transaction('profiles','readwrite')
@@ -6080,7 +6161,31 @@ async function pushToFirebase(){
 
   try{
     const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP };
-    if(sending.glyphs)      payload.glyphs      = store.toJSON();
+    
+    // ── GLYPHS DELTA UPLOAD ── (Spart Bandbreite durch gezielte Einzelupdates)
+    if(sending.glyphs){
+      const currentGlyphs = store.g || {};
+      
+      // 1. Finde geänderte oder neu hinzugefügte Zeichen
+      for (let key in currentGlyphs) {
+        const currentStr = JSON.stringify(currentGlyphs[key]);
+        const lastStr = JSON.stringify(_lastSyncedGlyphs[key]);
+        
+        if (currentStr !== lastStr) {
+          payload[`glyphs/${key}`] = currentGlyphs[key];
+          _lastSyncedGlyphs[key] = JSON.parse(currentStr); // Cache aktualisieren
+        }
+      }
+      
+      // 2. Finde gelöschte Zeichen (im Cache vorhanden, aber nicht mehr lokal)
+      for (let key in _lastSyncedGlyphs) {
+        if (!currentGlyphs[key]) {
+          payload[`glyphs/${key}`] = null; // Entfernt den Knoten gezielt aus Firebase
+          delete _lastSyncedGlyphs[key];
+        }
+      }
+    }
+    
     if(sending.customChars) payload.customChars  = JSON.stringify(customChars);
     if(sending.settings){
       const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
@@ -6117,10 +6222,13 @@ async function pushToFirebase(){
         theme:       localStorage.getItem('mw-theme') || 'auto'
       });
     }
+    
+    // Sende den kombinierten Payload (inklusive einzelner Glyph-Pfade) an Firebase
     await Promise.race([
       fbDb.ref(`users/${fbUser.uid}`).update(payload),
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
+    
     setSyncStatus('synced');
     // After a successful glyph upload, read back the server-written _updatedAt so the
     // NEXT page load recognises the timestamp and skips re-downloading the glyphs.
@@ -6141,6 +6249,42 @@ async function pushToFirebase(){
     else showToast('Synchronisierung: Zeitüberschreitung – bitte Verbindung prüfen');
   }
 }
+
+
+
+
+//PASTE AREA ABOVE
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ── LOGIN MODAL NAVIGATION ─────────────────────────────────
 const LM_SCREENS = ['pick','login','register','reset','verify'];

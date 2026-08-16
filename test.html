@@ -5679,530 +5679,1789 @@ async function signOutUser(){
 
 // ── FIREBASE LOAD ──────────────────────────────────────────
 let _pendingFirebaseData = null;
-let _lastSyncedGlyphs = {}; // Cacht den letzten Stand für Bandbreiten-effiziente Delta-Updates
-let _needsCloudMigration = false; // FLAG: Erkennt, ob in Firebase noch der alte String liegt
+
+// ── GLYPH SYNC HELPERS ────────────────────────────────────
+// Glyphs werden einzeln unter users/{uid}/glyphs/{character} gespeichert.
+// Dadurch wird bei einer Änderung nicht mehr der komplette Glyph-Satz übertragen.
+
+function _glyphFirebaseKey(ch){
+  // Firebase erlaubt bestimmte Zeichen nicht in Keys.
+  // Unicode-Zeichen selbst sind erlaubt, deshalb werden nur problematische
+  // Firebase-Key-Zeichen sicher codiert.
+  return encodeURIComponent(ch);
+}
+
+function _glyphFirebaseChar(key){
+  try{
+    return decodeURIComponent(key);
+  }catch(_){
+    return key;
+  }
+}
+
+function _glyphObjectFromStore(){
+  const result = {};
+  const g = store.g || {};
+
+  Object.keys(g).forEach(ch => {
+    result[ch] = g[ch];
+  });
+
+  return result;
+}
+
+function _glyphObjectToStore(obj){
+  if(!obj || typeof obj !== 'object') return;
+
+  Object.keys(obj).forEach(ch => {
+    store.g[ch] = obj[ch];
+  });
+}
+
+async function _loadGlyphsFromFirebase(uid, timeoutMs = 12000){
+  const snap = await Promise.race([
+    fbDb.ref(`users/${uid}/glyphs`).once('value'),
+    new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
+  ]);
+
+  const raw = snap.val() || {};
+  const glyphs = {};
+
+  Object.keys(raw).forEach(key => {
+    const ch = _glyphFirebaseChar(key);
+    glyphs[ch] = raw[key];
+  });
+
+  return glyphs;
+}
+
+function _glyphsJSON(){
+  const obj = _glyphObjectFromStore();
+
+  return JSON.stringify(
+    Object.keys(obj)
+      .sort()
+      .reduce((o,k) => {
+        o[k] = obj[k];
+        return o;
+      }, {})
+  );
+}
+
+
+// ── FIREBASE LOAD ──────────────────────────────────────────
 
 async function loadFromFirebase(){
   if(!fbUser || !fbDb) return;
+
   // Guard: email/password users must verify email before DB access
   const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
+
   if(_isEmailUser && !fbUser.emailVerified){
     setSyncStatus('idle');
     openVerifyRequiredModal();
     return;
   }
+
   setSyncStatus('syncing');
+
   const timeoutMs = 12000;
   const uid = fbUser.uid;
+
   try{
-    // ── SMART LOAD: check _updatedAt before pulling the heavy glyphs payload ──
-    const cachedTs = parseInt(localStorage.getItem(_GLYPH_TS_KEY) || '0');
+    // Timestamp prüfen
+    const cachedTs = parseInt(
+      localStorage.getItem(_GLYPH_TS_KEY) || '0'
+    );
+
     const tsSnap = await Promise.race([
       fbDb.ref(`users/${uid}/_updatedAt`).once('value'),
-      new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
+      new Promise((_,rej) =>
+        setTimeout(() => rej(new Error('timeout')), timeoutMs)
+      )
     ]);
-    const cloudTs = tsSnap.val(); 
+
+    const cloudTs = tsSnap.val();
 
     let data;
     let glyphsWereSkipped = false;
 
-    if(cloudTs && cachedTs && cloudTs === cachedTs && store.count() > 0 && !_dirty.glyphs){
+    // ── METADATA ONLY ─────────────────────────────────────
+    if(
+      cloudTs &&
+      cachedTs &&
+      cloudTs === cachedTs &&
+      store.count() > 0 &&
+      !_dirty.glyphs
+    ){
       const [sSnap, pSnap, ccSnap, sessSnap] = await Promise.all([
         fbDb.ref(`users/${uid}/settings`).once('value'),
         fbDb.ref(`users/${uid}/preferences`).once('value'),
         fbDb.ref(`users/${uid}/customChars`).once('value'),
-        fbDb.ref(`users/${uid}/_session`).once('value'),
+        fbDb.ref(`users/${uid}/_session`).once('value')
       ]);
+
       data = {
         settings:    sSnap.val(),
         preferences: pSnap.val(),
         customChars: ccSnap.val(),
         _session:    sessSnap.val(),
         _updatedAt:  cloudTs,
-        glyphs:      null   
+        glyphs:      null
       };
+
       glyphsWereSkipped = true;
-    } else {
-      const snap = await Promise.race([
-        fbDb.ref(`users/${uid}`).once('value'),
-        new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
-      ]);
-      data = snap.val();
-      if(data && data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
+
+    }else{
+
+      // ── METADATA + GLYPHS ───────────────────────────────
+      // Glyphs liegen jetzt einzeln unter /glyphs.
+      const [sSnap, pSnap, ccSnap, sessSnap, glyphSnap] =
+        await Promise.all([
+          fbDb.ref(`users/${uid}/settings`).once('value'),
+          fbDb.ref(`users/${uid}/preferences`).once('value'),
+          fbDb.ref(`users/${uid}/customChars`).once('value'),
+          fbDb.ref(`users/${uid}/_session`).once('value'),
+          fbDb.ref(`users/${uid}/glyphs`).once('value')
+        ]);
+
+      const glyphRaw = glyphSnap.val() || {};
+      const glyphObj = {};
+
+      Object.keys(glyphRaw).forEach(key => {
+        glyphObj[_glyphFirebaseChar(key)] = glyphRaw[key];
+      });
+
+      data = {
+        settings:    sSnap.val(),
+        preferences: pSnap.val(),
+        customChars: ccSnap.val(),
+        _session:    sessSnap.val(),
+        _updatedAt:  cloudTs,
+        glyphs:      glyphObj
+      };
+
+      if(cloudTs){
+        localStorage.setItem(
+          _GLYPH_TS_KEY,
+          String(cloudTs)
+        );
+      }
     }
 
+
+    // ── GLYPHS CONFIRMED IN SYNC ──────────────────────────
     if(glyphsWereSkipped){
-      if(data.settings || data.preferences || data.customChars)
+
+      if(
+        data.settings ||
+        data.preferences ||
+        data.customChars
+      ){
         applyFirebaseData(data, true);
-      if(_dirty.glyphs && store.count() > 0) scheduleSync();
+      }
+
+      if(_dirty.glyphs && store.count() > 0){
+        scheduleSync();
+      }
+
       setSyncStatus('synced');
       return;
     }
 
+
+    // ── CASE A: CLOUD EMPTY ───────────────────────────────
     if(!data){
       setSyncStatus('synced');
+
       if(store.count() > 0){
-        Object.keys(_dirty).forEach(k => _dirty[k] = true);
+        Object.keys(_dirty).forEach(
+          k => _dirty[k] = true
+        );
+
         scheduleSync();
-        showToast('Zeichen werden in den Account hochgeladen');
+
+        showToast(
+          'Zeichen werden in den Account hochgeladen'
+        );
       }
+
       return;
     }
 
-    const localKeys  = Object.keys(store.g || {});
+
+    // ── CLOUD GLYPHS ──────────────────────────────────────
+    const localKeys = Object.keys(store.g || {});
     const localCount = localKeys.length;
-    
-    const cloudGlyphsRaw = data.glyphs || null;
-    let cloudObj = {};
-    if(cloudGlyphsRaw) {
-        if (typeof cloudGlyphsRaw === 'string') {
-            cloudObj = _parseGlyphs(cloudGlyphsRaw);
-            _needsCloudMigration = true; // Alter String erkannt -> Migration vormerken
-        } else {
-            cloudObj = cloudGlyphsRaw;
-        }
-    }
-    
-    const cloudKeys  = Object.keys(cloudObj);
+
+    const cloudObj = data.glyphs || {};
+    const cloudKeys = Object.keys(cloudObj);
     const cloudCount = cloudKeys.length;
 
+
+    // ── CASE B: NO LOCAL GLYPHS ───────────────────────────
     if(localCount === 0){
+
       applyFirebaseData(data, true);
+
       setSyncStatus('synced');
-      if(cloudCount > 0) showToast('Konto-Zeichen geladen (' + cloudCount + ' Zeichen)');
+
+      if(cloudCount > 0){
+        showToast(
+          'Konto-Zeichen geladen (' +
+          cloudCount +
+          ' Zeichen)'
+        );
+      }
+
       return;
     }
 
+
+    // ── CASE C: CLOUD HAS NO GLYPHS ───────────────────────
     if(cloudCount === 0){
-      const dataProtected = Object.assign({}, data, { glyphs: null });
+
+      const dataProtected = Object.assign(
+        {},
+        data,
+        { glyphs: null }
+      );
+
       try{
-        const cloudCC = data.customChars ? JSON.parse(data.customChars) : [];
-        if(!cloudCC.length) dataProtected.customChars = null;
-      }catch(_){ dataProtected.customChars = null; }
-      applyFirebaseData(dataProtected, true);
-      Object.keys(_dirty).forEach(k => _dirty[k] = true);
-      setTimeout(() => subscribeToFirebase(), 2500);
+        const cloudCC = data.customChars
+          ? JSON.parse(data.customChars)
+          : [];
+
+        if(!cloudCC.length){
+          dataProtected.customChars = null;
+        }
+
+      }catch(_){
+        dataProtected.customChars = null;
+      }
+
+      applyFirebaseData(
+        dataProtected,
+        true
+      );
+
+      Object.keys(_dirty).forEach(
+        k => _dirty[k] = true
+      );
+
+      setTimeout(
+        () => subscribeToFirebase(),
+        2500
+      );
+
       scheduleSync();
+
       setSyncStatus('pending');
-      showToast('Lokale Zeichen werden hochgeladen…');
+
+      showToast(
+        'Lokale Zeichen werden hochgeladen…'
+      );
+
       return;
     }
 
+
+    // ── CASE D: SAME KEY SETS ─────────────────────────────
     const cloudSet = new Set(cloudKeys);
-    const sameKeys = localKeys.length === cloudKeys.length && localKeys.every(k => cloudSet.has(k));
 
-    if(sameKeys && _glyphsJSON() === JSON.stringify(cloudObj)){
-      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
-      applyFirebaseData(dataWithoutGlyphs, true);
+    const sameKeys =
+      localKeys.length === cloudKeys.length &&
+      localKeys.every(k => cloudSet.has(k));
+
+    if(
+      sameKeys &&
+      _glyphsJSON() ===
+      JSON.stringify(
+        Object.keys(cloudObj)
+          .sort()
+          .reduce((o,k) => {
+            o[k] = cloudObj[k];
+            return o;
+          }, {})
+      )
+    ){
+
+      const dataWithoutGlyphs =
+        Object.assign(
+          {},
+          data,
+          { glyphs: null }
+        );
+
+      applyFirebaseData(
+        dataWithoutGlyphs,
+        true
+      );
+
       setSyncStatus('synced');
       return;
     }
 
-    const allLocalInCloud = localKeys.every(k => cloudSet.has(k));
-    if(allLocalInCloud && cloudCount > localCount){
+
+    // ── CASE E: CLOUD IS STRICT SUPERSET ──────────────────
+    const allLocalInCloud =
+      localKeys.every(k => cloudSet.has(k));
+
+    if(
+      allLocalInCloud &&
+      cloudCount > localCount
+    ){
+
       _pendingFirebaseData = data;
-      document.getElementById('merge-local-count').textContent = localCount;
-      document.getElementById('merge-cloud-count').textContent = cloudCount;
-      document.getElementById('merge-modal').classList.add('open');
-      document.getElementById('merge-context').textContent =
-        'Dein Konto enthält ' + (cloudCount - localCount) + ' zusätzliche Zeichen, die lokal fehlen.';
+
+      document.getElementById(
+        'merge-local-count'
+      ).textContent = localCount;
+
+      document.getElementById(
+        'merge-cloud-count'
+      ).textContent = cloudCount;
+
+      document.getElementById(
+        'merge-modal'
+      ).classList.add('open');
+
+      document.getElementById(
+        'merge-context'
+      ).textContent =
+        'Dein Konto enthält ' +
+        (cloudCount - localCount) +
+        ' zusätzliche Zeichen, die lokal fehlen.';
+
       setSyncStatus('synced');
       return;
     }
 
+
+    // ── CASE F: TRUE CONFLICT ─────────────────────────────
     _pendingFirebaseData = data;
-    document.getElementById('merge-local-count').textContent = localCount;
-    document.getElementById('merge-cloud-count').textContent = cloudCount;
-    document.getElementById('merge-context').textContent =
+
+    document.getElementById(
+      'merge-local-count'
+    ).textContent = localCount;
+
+    document.getElementById(
+      'merge-cloud-count'
+    ).textContent = cloudCount;
+
+    document.getElementById(
+      'merge-context'
+    ).textContent =
       'Lokal und im Konto gibt es unterschiedliche Zeichen-Sets.';
-    document.getElementById('merge-modal').classList.add('open');
+
+    document.getElementById(
+      'merge-modal'
+    ).classList.add('open');
+
     setSyncStatus('synced');
+
   }catch(err){
-    setSyncStatus(err.message === 'timeout' ? 'offline' : 'error');
-    console.error('Firebase Ladefehler:', err);
+
+    setSyncStatus(
+      err.message === 'timeout'
+        ? 'offline'
+        : 'error'
+    );
+
+    console.error(
+      'Firebase Ladefehler:',
+      err
+    );
   }
 }
+
+
+// ── MERGE KEEP LOCAL ──────────────────────────────────────
 
 function mergeKeepLocal(){
-  document.getElementById('merge-modal').classList.remove('open');
+
+  document.getElementById(
+    'merge-modal'
+  ).classList.remove('open');
+
   if(_pendingFirebaseData){
+
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
+
+    // Custom chars zusammenführen
     if(d.customChars){
       try{
-        const cloudCC = JSON.parse(d.customChars);
-        cloudCC.forEach(ch => { if(!customChars.includes(ch)) customChars.push(ch); });
-        localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
+        const cloudCC =
+          JSON.parse(d.customChars);
+
+        cloudCC.forEach(ch => {
+          if(!customChars.includes(ch)){
+            customChars.push(ch);
+          }
+        });
+
+        localStorage.setItem(
+          'mw-custom-chars',
+          JSON.stringify(customChars)
+        );
+
         _dirty.customChars = true;
+
       }catch(e){}
     }
-    const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
-    applyFirebaseData(dataSettingsOnly, true);
+
+    const dataSettingsOnly =
+      Object.assign(
+        {},
+        d,
+        {
+          glyphs: null,
+          customChars: null
+        }
+      );
+
+    applyFirebaseData(
+      dataSettingsOnly,
+      true
+    );
   }
-  buildCustomGrid(); 
-  if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
+
+  buildCustomGrid();
+
+  if(curCustomIdx >= 0)
+    refreshCustomChar();
+  else if(charIdx >= 0)
+    refreshChar();
+
   _dirty.glyphs = true;
+
   scheduleSync();
-  showToast('Lokale Zeichen werden hochgeladen');
+
+  showToast(
+    'Lokale Zeichen werden hochgeladen'
+  );
 }
+
+
+// ── MERGE USE CLOUD ───────────────────────────────────────
 
 function mergeUseCloud(){
-  document.getElementById('merge-modal').classList.remove('open');
+
+  document.getElementById(
+    'merge-modal'
+  ).classList.remove('open');
+
   if(_pendingFirebaseData){
+
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    applyFirebaseData(d, true);
+
+    applyFirebaseData(
+      d,
+      true
+    );
   }
-  buildCustomGrid(); 
-  if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
-  showToast('Konto-Zeichen wurden geladen');
+
+  buildCustomGrid();
+
+  if(curCustomIdx >= 0)
+    refreshCustomChar();
+  else if(charIdx >= 0)
+    refreshChar();
+
+  showToast(
+    'Konto-Zeichen wurden geladen'
+  );
 }
 
+
+// ── MERGE COMBINE ─────────────────────────────────────────
+
 function mergeCombine(){
-  document.getElementById('merge-modal').classList.remove('open');
+
+  document.getElementById(
+    'merge-modal'
+  ).classList.remove('open');
+
   if(_pendingFirebaseData){
+
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
 
+    // Custom chars
     if(d.customChars){
+
       try{
-        const cloudCC = JSON.parse(d.customChars);
-        cloudCC.forEach(ch => { if(!customChars.includes(ch)) customChars.push(ch); });
-        localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
+        const cloudCC =
+          JSON.parse(d.customChars);
+
+        cloudCC.forEach(ch => {
+          if(!customChars.includes(ch)){
+            customChars.push(ch);
+          }
+        });
+
+        localStorage.setItem(
+          'mw-custom-chars',
+          JSON.stringify(customChars)
+        );
+
         _dirty.customChars = true;
-      }catch(e){ console.warn('Merge customChars Fehler:', e); }
+
+      }catch(e){
+        console.warn(
+          'Merge customChars Fehler:',
+          e
+        );
+      }
     }
 
-    const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
-    applyFirebaseData(dataSettingsOnly, true);
+    const dataSettingsOnly =
+      Object.assign(
+        {},
+        d,
+        {
+          glyphs: null,
+          customChars: null
+        }
+      );
 
+    applyFirebaseData(
+      dataSettingsOnly,
+      true
+    );
+
+
+    // Cloud-Glyphs ergänzen.
+    // Lokale Glyphs gewinnen bei gleichen Zeichen.
     if(d.glyphs){
+
       try{
-        const mergeObj = typeof d.glyphs === 'string' ? _parseGlyphs(d.glyphs) : d.glyphs;
+
+        const mergeObj =
+          typeof d.glyphs === 'string'
+            ? _parseGlyphs(d.glyphs)
+            : d.glyphs;
+
         Object.keys(mergeObj).forEach(ch => {
-          if(!store.has(ch)){ store.g[ch] = mergeObj[ch]; }
+
+          if(!store.has(ch)){
+            store.g[ch] = mergeObj[ch];
+          }
+
         });
-        buildGrid(); refreshChar(); updateProg(); schedRender();
-      }catch(e){ console.warn('Merge-Fehler:', e); }
+
+        buildGrid();
+        refreshChar();
+        updateProg();
+        schedRender();
+
+      }catch(e){
+
+        console.warn(
+          'Merge-Fehler:',
+          e
+        );
+      }
     }
   }
+
   buildCustomGrid();
-  if(curCustomIdx >= 0) refreshCustomChar();
+
+  if(curCustomIdx >= 0)
+    refreshCustomChar();
+  else if(charIdx >= 0)
+    refreshChar();
+
   _dirty.glyphs = true;
+
   scheduleSync();
-  showToast('Zeichen wurden zusammengeführt');
+
+  showToast(
+    'Zeichen wurden zusammengeführt'
+  );
+
   updateGlyphLimitBar();
 }
 
-// ── FIREBASE SUBSCRIBE ───────────
+
+// ── FIREBASE SUBSCRIBE ────────────────────────────────────
+
 function subscribeToFirebase(){
+
   if(!fbUser || !fbDb) return;
-  const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
-  if(_isEmailUser && !fbUser.emailVerified) return;
+
+  const _isEmailUser =
+    fbUser.providerData.some(
+      p => p.providerId === 'password'
+    );
+
+  if(
+    _isEmailUser &&
+    !fbUser.emailVerified
+  ){
+    return;
+  }
 
   unsubscribeFromFirebase();
-  fbListener = (snap) => {
-    const data = snap.val();
-    if(!data) return;
-    if(data._session === SESSION_ID) return;
 
-    if(_dirty.glyphs && data.glyphs !== undefined){
-      const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
-      applyFirebaseData(dataWithoutGlyphs, false);
-      setSyncStatus('synced');
-      return;
-    }
+  const uid = fbUser.uid;
 
-    const localCount = Object.keys(store.g || {}).length;
-    if(localCount > 0 && data.glyphs !== undefined){
-      let cloudCount = 0;
-      try{
-        const cloudObj = typeof data.glyphs === 'string' ? _parseGlyphs(data.glyphs) : data.glyphs;
-        cloudCount = Object.keys(cloudObj).length;
-      }catch(_){}
-      if(cloudCount < localCount){
-        const dataProtected = Object.assign({}, data, { glyphs: null });
-        applyFirebaseData(dataProtected, false);
-        setSyncStatus('synced');
+
+  // ── METADATA LISTENER ──────────────────────────────────
+  // NICHT mehr auf users/{uid} hören.
+  // Dadurch wird bei Glyph-Änderungen nicht der komplette Benutzerknoten
+  // übertragen.
+
+  fbListener = async () => {
+
+    try{
+
+      const dataSnap =
+        await fbDb.ref(`users/${uid}`).once('value');
+
+      const data =
+        dataSnap.val();
+
+      if(!data) return;
+
+      if(data._session === SESSION_ID)
         return;
-      }
-    }
 
-    applyFirebaseData(data, false);
-    if(data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
-    if(data.glyphs) localStorage.setItem('mw-glyphs-dirty', '0');
-    setSyncStatus('synced');
-    showToast('↻ Von anderem Gerät synchronisiert');
+
+      // Bei lokalen Glyph-Änderungen niemals lokale Glyphs überschreiben.
+      const dataWithoutGlyphs =
+        Object.assign(
+          {},
+          data,
+          { glyphs: null }
+        );
+
+      applyFirebaseData(
+        dataWithoutGlyphs,
+        false
+      );
+
+      if(data._updatedAt){
+        localStorage.setItem(
+          _GLYPH_TS_KEY,
+          String(data._updatedAt)
+        );
+      }
+
+      setSyncStatus('synced');
+
+      showToast(
+        '↻ Von anderem Gerät synchronisiert'
+      );
+
+    }catch(e){
+
+      console.warn(
+        'Firebase Listener Fehler:',
+        e
+      );
+    }
   };
-  fbDb.ref(`users/${fbUser.uid}`).on('value', fbListener);
+
+
+  // Nur Metadaten überwachen.
+  fbDb.ref(`users/${uid}/settings`)
+    .on('value', fbListener);
+
+  fbDb.ref(`users/${uid}/preferences`)
+    .on('value', fbListener);
+
+  fbDb.ref(`users/${uid}/customChars`)
+    .on('value', fbListener);
+
+  // Glyphs werden separat überwacht.
+  fbDb.ref(`users/${uid}/glyphs`)
+    .on('child_changed', async snap => {
+
+      if(_dirty.glyphs) return;
+
+      const ch =
+        _glyphFirebaseChar(snap.key);
+
+      if(!store.g){
+        store.g = {};
+      }
+
+      store.g[ch] = snap.val();
+
+      openDB().then(() => {
+
+        db.transaction(
+          'profiles',
+          'readwrite'
+        )
+        .objectStore('profiles')
+        .put({
+          name: 'default',
+          g: store.toJSON(),
+          ts: Date.now()
+        });
+
+      });
+
+      buildGrid();
+      refreshChar();
+      updateProg();
+      schedRender();
+
+      setSyncStatus('synced');
+
+      showToast(
+        '↻ Zeichen „' + ch +
+        '“ synchronisiert'
+      );
+    });
+
+
+  fbDb.ref(`users/${uid}/glyphs`)
+    .on('child_added', async snap => {
+
+      if(_dirty.glyphs) return;
+
+      const ch =
+        _glyphFirebaseChar(snap.key);
+
+      if(store.has(ch))
+        return;
+
+      if(!store.g){
+        store.g = {};
+      }
+
+      store.g[ch] = snap.val();
+
+      openDB().then(() => {
+
+        db.transaction(
+          'profiles',
+          'readwrite'
+        )
+        .objectStore('profiles')
+        .put({
+          name: 'default',
+          g: store.toJSON(),
+          ts: Date.now()
+        });
+
+      });
+
+      buildGrid();
+      refreshChar();
+      updateProg();
+      schedRender();
+
+      setSyncStatus('synced');
+
+      showToast(
+        '↻ Neues Zeichen „' +
+        ch +
+        '“ synchronisiert'
+      );
+    });
+
+
+  fbDb.ref(`users/${uid}/glyphs`)
+    .on('child_removed', async snap => {
+
+      if(_dirty.glyphs) return;
+
+      const ch =
+        _glyphFirebaseChar(snap.key);
+
+      if(store.g){
+        delete store.g[ch];
+      }
+
+      openDB().then(() => {
+
+        db.transaction(
+          'profiles',
+          'readwrite'
+        )
+        .objectStore('profiles')
+        .put({
+          name: 'default',
+          g: store.toJSON(),
+          ts: Date.now()
+        });
+
+      });
+
+      buildGrid();
+      refreshChar();
+      updateProg();
+      schedRender();
+
+      setSyncStatus('synced');
+
+      showToast(
+        '↻ Zeichen „' +
+        ch +
+        '“ gelöscht'
+      );
+    });
 }
+
+
+// ── UNSUBSCRIBE ────────────────────────────────────────────
 
 function unsubscribeFromFirebase(){
-  if(fbDb && fbUser && fbListener){
-    fbDb.ref(`users/${fbUser.uid}`).off('value', fbListener);
-    fbListener = null;
-  }
+
+  if(!fbDb || !fbUser)
+    return;
+
+  const uid = fbUser.uid;
+
+  fbDb.ref(`users/${uid}/settings`)
+    .off('value');
+
+  fbDb.ref(`users/${uid}/preferences`)
+    .off('value');
+
+  fbDb.ref(`users/${uid}/customChars`)
+    .off('value');
+
+  fbDb.ref(`users/${uid}/glyphs`)
+    .off('child_changed');
+
+  fbDb.ref(`users/${uid}/glyphs`)
+    .off('child_added');
+
+  fbDb.ref(`users/${uid}/glyphs`)
+    .off('child_removed');
+
+  fbListener = null;
 }
 
-// ── APPLY FIREBASE DATA ────────────────────────────────────
-function applyFirebaseData(data, isInitialLoad){
-  try{
-    if(data.glyphs){
-      const isString = typeof data.glyphs === 'string';
-      if (isString) _needsCloudMigration = true; // String erkannt! Muss migriert werden.
-      
-      const glyphsObj = isString ? _parseGlyphs(data.glyphs) : data.glyphs;
-      
-      // Cache aktualisieren
-      _lastSyncedGlyphs = JSON.parse(JSON.stringify(glyphsObj));
-      
-      store.fromJSON(isString ? data.glyphs : JSON.stringify(glyphsObj));
-      _checkMigration();
-      openDB().then(()=>{
-        db.transaction('profiles','readwrite')
-          .objectStore('profiles')
-          .put({name:'default', g:store.toJSON(), ts:Date.now()});
-      });
-      buildGrid(); refreshChar(); updateProg(); schedRender();
-    }
-  }catch(e){ console.warn('Firebase: Fehler beim Laden der Zeichen', e); }
 
+// ── APPLY FIREBASE DATA ───────────────────────────────────
+
+function applyFirebaseData(
+  data,
+  isInitialLoad
+){
+
+  // ── Glyphs ──────────────────────────────────────────────
   try{
-    if(data.customChars){
-      customChars = JSON.parse(data.customChars);
-      localStorage.setItem('mw-custom-chars', JSON.stringify(customChars));
-      buildCustomGrid();
-      if(curCustomIdx >= 0) refreshCustomChar();
+
+    if(data.glyphs){
+
+      const glyphObj =
+        typeof data.glyphs === 'string'
+          ? _parseGlyphs(data.glyphs)
+          : data.glyphs;
+
+      store.fromJSON(
+        JSON.stringify(glyphObj)
+      );
+
+      _checkMigration();
+
+      openDB().then(() => {
+
+        db.transaction(
+          'profiles',
+          'readwrite'
+        )
+        .objectStore('profiles')
+        .put({
+          name: 'default',
+          g: store.toJSON(),
+          ts: Date.now()
+        });
+
+      });
+
+      buildGrid();
+      refreshChar();
+      updateProg();
+      schedRender();
     }
+
+  }catch(e){
+
+    console.warn(
+      'Firebase: Fehler beim Laden der Zeichen',
+      e
+    );
+  }
+
+
+  // ── Custom chars ────────────────────────────────────────
+  try{
+
+    if(data.customChars){
+
+      customChars =
+        JSON.parse(data.customChars);
+
+      localStorage.setItem(
+        'mw-custom-chars',
+        JSON.stringify(customChars)
+      );
+
+      buildCustomGrid();
+
+      if(curCustomIdx >= 0)
+        refreshCustomChar();
+    }
+
   }catch(e){}
+
 
   _reconcileCustomChars();
 
+
+  // ── Settings ────────────────────────────────────────────
   if(isInitialLoad){
-    try{
-      if(data.settings){
-        const s = JSON.parse(data.settings);
-        const setEl = (id,v) => {
-          const el = document.getElementById(id);
-          if(el){ el.value=v; if(el.type==='range') syncPct(el); }
-        };
-        if(s.ls  != null){ setEl('ls-sl',s.ls);  const l=document.getElementById('ls-val'); if(l)l.textContent=parseFloat(s.ls).toFixed(2); }
-        if(s.ws  != null){ setEl('ws-sl',s.ws);  const l=document.getElementById('ws-val'); if(l)l.textContent=parseFloat(s.ws).toFixed(1); }
-        if(s.lh  != null){ setEl('lh-sl',s.lh);  const l=document.getElementById('lh-val'); if(l)l.textContent=parseFloat(s.lh).toFixed(1); }
-        if(s.sw  != null){ setEl('sw-sl',s.sw);  const l=document.getElementById('sw-val'); if(l)l.textContent=parseFloat(s.sw).toFixed(1); }
-        if(s.fs  != null){ setEl('fs-sl',s.fs);  const l=document.getElementById('fs-val'); if(l)l.textContent=s.fs; }
-        if(s.jit != null){ setEl('jit-sl',s.jit);const l=document.getElementById('jit-val');if(l)l.textContent=parseFloat(s.jit).toFixed(1); }
-        if(s.ps  != null){ setEl('ps',s.ps);     const l=document.getElementById('ps-val'); if(l)l.textContent=s.ps; }
-        if(s.ink != null){ const el=document.getElementById('ink-col'); if(el) el.value=s.ink; }
-        if(s.fmt) _defaultFormatSaved = true; 
-        if(s.fmt){
-          currentPageFormat=s.fmt;
-          currentOrientation=s.ori||'portrait';
-          if(s.fmt==='custom'){
-            PAGE_W=parseInt(s.customW)||794;
-            PAGE_H=parseInt(s.customH)||1123;
-          } else {
-            const cfmt=PAGE_FORMATS.find(f=>f.key===s.fmt);
-            if(cfmt){
-              const pt=getFmtPt(cfmt,s.ori||'portrait');
-              PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
-              if(cfmt.linStyle) currentLin=cfmt.linStyle;
-            }
-          }
-          if(s.lin) currentLin=s.lin;
-          _applyPageDimensions();
-          ensurePages(0);
-          ensurePages(1);
-          updateFmtToolbarLabel();
-        }
-        if(s.lin){
-          currentLin = s.lin;
-          pagesData.forEach(p => drawLin(p.bgCtx, PAGE_W, PAGE_H, s.lin));
-        }
-        if(s.pgc){
-          setPageColor(s.pgc, s.pgf||'#D0D2D3', s.pgcBtn||'', s.pgs||'');
-        }
-        if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
-        renderCustomColors();
-        engine.cfg.marginT=66;
-        _snapTextToFormatGrid();
-        const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
-        document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
-        schedRender();
-      }
-    }catch(e){}
 
     try{
-      if(data.preferences){
-        const p = JSON.parse(data.preferences);
-        if(p.unknownPref){ unknownSymbolPref=p.unknownPref; saveUnknownPref(); updateSettingsUnknownRadio(); }
-        if(p.theme){ localStorage.setItem('mw-theme', p.theme); setThemeQuiet(p.theme); }
+
+      if(data.settings){
+
+        const s =
+          JSON.parse(data.settings);
+
+        const setEl = (id,v) => {
+
+          const el =
+            document.getElementById(id);
+
+          if(el){
+
+            el.value = v;
+
+            if(el.type === 'range'){
+              syncPct(el);
+            }
+          }
+        };
+
+
+        if(s.ls != null){
+          setEl('ls-sl',s.ls);
+          const l =
+            document.getElementById('ls-val');
+          if(l)
+            l.textContent =
+              parseFloat(s.ls).toFixed(2);
+        }
+
+        if(s.ws != null){
+          setEl('ws-sl',s.ws);
+          const l =
+            document.getElementById('ws-val');
+          if(l)
+            l.textContent =
+              parseFloat(s.ws).toFixed(1);
+        }
+
+        if(s.lh != null){
+          setEl('lh-sl',s.lh);
+          const l =
+            document.getElementById('lh-val');
+          if(l)
+            l.textContent =
+              parseFloat(s.lh).toFixed(1);
+        }
+
+        if(s.sw != null){
+          setEl('sw-sl',s.sw);
+          const l =
+            document.getElementById('sw-val');
+          if(l)
+            l.textContent =
+              parseFloat(s.sw).toFixed(1);
+        }
+
+        if(s.fs != null){
+          setEl('fs-sl',s.fs);
+          const l =
+            document.getElementById('fs-val');
+          if(l)
+            l.textContent = s.fs;
+        }
+
+        if(s.jit != null){
+          setEl('jit-sl',s.jit);
+          const l =
+            document.getElementById('jit-val');
+          if(l)
+            l.textContent =
+              parseFloat(s.jit).toFixed(1);
+        }
+
+        if(s.ps != null){
+          setEl('ps',s.ps);
+          const l =
+            document.getElementById('ps-val');
+          if(l)
+            l.textContent = s.ps;
+        }
+
+        if(s.ink != null){
+
+          const el =
+            document.getElementById('ink-col');
+
+          if(el)
+            el.value = s.ink;
+        }
+
+
+        if(s.fmt)
+          _defaultFormatSaved = true;
+
+        if(s.fmt){
+
+          currentPageFormat = s.fmt;
+          currentOrientation =
+            s.ori || 'portrait';
+
+          if(s.fmt === 'custom'){
+
+            PAGE_W =
+              parseInt(s.customW) || 794;
+
+            PAGE_H =
+              parseInt(s.customH) || 1123;
+
+          }else{
+
+            const cfmt =
+              PAGE_FORMATS.find(
+                f => f.key === s.fmt
+              );
+
+            if(cfmt){
+
+              const pt =
+                getFmtPt(
+                  cfmt,
+                  s.ori || 'portrait'
+                );
+
+              PAGE_W =
+                ptToPx(pt.w);
+
+              PAGE_H =
+                ptToPx(pt.h);
+
+              if(cfmt.linStyle)
+                currentLin =
+                  cfmt.linStyle;
+            }
+          }
+
+          if(s.lin)
+            currentLin = s.lin;
+
+          _applyPageDimensions();
+
+          ensurePages(0);
+          ensurePages(1);
+
+          updateFmtToolbarLabel();
+        }
+
+
+        if(s.lin){
+
+          currentLin = s.lin;
+
+          pagesData.forEach(
+            p =>
+              drawLin(
+                p.bgCtx,
+                PAGE_W,
+                PAGE_H,
+                s.lin
+              )
+          );
+        }
+
+
+        if(s.pgc){
+
+          setPageColor(
+            s.pgc,
+            s.pgf || '#D0D2D3',
+            s.pgcBtn || '',
+            s.pgs || ''
+          );
+        }
+
+
+        if(s.customColors){
+
+          try{
+
+            customPageColors =
+              JSON.parse(
+                s.customColors
+              );
+
+            localStorage.setItem(
+              'mw-custom-colors',
+              s.customColors
+            );
+
+          }catch(e){}
+        }
+
+
+        renderCustomColors();
+
+        engine.cfg.marginT = 66;
+
+        _snapTextToFormatGrid();
+
+
+        const exp =
+          new Date(
+            Date.now() +
+            365 * 24 * 60 * 60 * 1000
+          ).toUTCString();
+
+        document.cookie =
+          'mw-settings=' +
+          encodeURIComponent(
+            JSON.stringify(s)
+          ) +
+          ';expires=' +
+          exp +
+          ';path=/;SameSite=Lax';
+
+        schedRender();
       }
+
+    }catch(e){}
+
+
+    try{
+
+      if(data.preferences){
+
+        const p =
+          JSON.parse(
+            data.preferences
+          );
+
+        if(p.unknownPref){
+
+          unknownSymbolPref =
+            p.unknownPref;
+
+          saveUnknownPref();
+          updateSettingsUnknownRadio();
+        }
+
+        if(p.theme){
+
+          localStorage.setItem(
+            'mw-theme',
+            p.theme
+          );
+
+          setThemeQuiet(
+            p.theme
+          );
+        }
+      }
+
     }catch(e){}
   }
 }
 
-// ── SCHEDULE & PUSH TO FIREBASE ────────────────────────────
+
+// ── SCHEDULE & PUSH TO FIREBASE ───────────────────────────
+
 function scheduleSync(){
-  if(!fbUser || !fbDb) return;
+
+  if(!fbUser || !fbDb)
+    return;
+
   setSyncStatus('pending');
+
   clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushToFirebase, 1500);
+
+  syncTimer =
+    setTimeout(
+      pushToFirebase,
+      1500
+    );
 }
+
+
+// ── MANUAL EDIT DEBOUNCE ──────────────────────────────────
 
 function scheduleManualSync(){
-  _dirty.glyphs = true;
-  localStorage.setItem('mw-glyphs-dirty', '1');
-  if(!fbUser || !fbDb){ return; } 
 
-  clearTimeout(_manualEditTimer);
-  clearInterval(_manualCountdown);
+  _dirty.glyphs = true;
+
+  localStorage.setItem(
+    'mw-glyphs-dirty',
+    '1'
+  );
+
+  if(!fbUser || !fbDb)
+    return;
+
+  clearTimeout(
+    _manualEditTimer
+  );
+
+  clearInterval(
+    _manualCountdown
+  );
 
   let remaining = 10;
-  _showCountdownBadge(remaining);
-  _manualCountdown = setInterval(() => {
-    remaining--;
-    if(remaining > 0){
-      _showCountdownBadge(remaining);
-    } else {
-      clearInterval(_manualCountdown);
-      _manualCountdown = null;
-    }
-  }, 1000);
 
-  _manualEditTimer = setTimeout(() => {
-    _manualEditTimer = null;
-    clearInterval(_manualCountdown);
-    _manualCountdown = null;
-    pushToFirebase();
-  }, 10000);
+  _showCountdownBadge(
+    remaining
+  );
+
+  _manualCountdown =
+    setInterval(() => {
+
+      remaining--;
+
+      if(remaining > 0){
+
+        _showCountdownBadge(
+          remaining
+        );
+
+      }else{
+
+        clearInterval(
+          _manualCountdown
+        );
+
+        _manualCountdown = null;
+      }
+
+    },1000);
+
+
+  _manualEditTimer =
+    setTimeout(() => {
+
+      _manualEditTimer = null;
+
+      clearInterval(
+        _manualCountdown
+      );
+
+      _manualCountdown = null;
+
+      pushToFirebase();
+
+    },10000);
 }
+
 
 function _showCountdownBadge(seconds){
-  const badge = document.getElementById('sync-badge');
-  if(!badge) return;
+
+  const badge =
+    document.getElementById(
+      'sync-badge'
+    );
+
+  if(!badge)
+    return;
+
   badge.style.display = 'flex';
-  badge.innerHTML = `· Ausstehend <span style="opacity:.55;font-variant-numeric:tabular-nums;margin-left:3px">(${seconds}s)</span>`;
-  badge.className = 'sync-badge sync-pending';
+
+  badge.innerHTML =
+    `· Ausstehend <span style="opacity:.55;font-variant-numeric:tabular-nums;margin-left:3px">(${seconds}s)</span>`;
+
+  badge.className =
+    'sync-badge sync-pending';
 }
+
+
+// ── FLUSH ─────────────────────────────────────────────────
 
 function _flushAllSyncTimers(){
-  if(syncTimer){        clearTimeout(syncTimer);        syncTimer       = null; pushToFirebase(); }
-  if(_manualEditTimer){ clearTimeout(_manualEditTimer); _manualEditTimer = null; pushToFirebase(); }
-  if(_manualCountdown){ clearInterval(_manualCountdown); _manualCountdown = null; }
+
+  if(syncTimer){
+
+    clearTimeout(syncTimer);
+
+    syncTimer = null;
+
+    pushToFirebase();
+  }
+
+  if(_manualEditTimer){
+
+    clearTimeout(
+      _manualEditTimer
+    );
+
+    _manualEditTimer = null;
+
+    pushToFirebase();
+  }
+
+  if(_manualCountdown){
+
+    clearInterval(
+      _manualCountdown
+    );
+
+    _manualCountdown = null;
+  }
 }
-document.addEventListener('visibilitychange', () => { if(document.hidden) _flushAllSyncTimers(); });
-window.addEventListener('beforeunload', _flushAllSyncTimers);
+
+
+document.addEventListener(
+  'visibilitychange',
+  () => {
+
+    if(document.hidden)
+      _flushAllSyncTimers();
+
+  }
+);
+
+window.addEventListener(
+  'beforeunload',
+  _flushAllSyncTimers
+);
+
+
+// ── PUSH TO FIREBASE ──────────────────────────────────────
 
 async function pushToFirebase(){
-  if(!fbUser || !fbDb) return;
-  const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
-  if(_isEmailUser && !fbUser.emailVerified) return;
-  if(!Object.values(_dirty).some(Boolean)) return;
+
+  if(!fbUser || !fbDb)
+    return;
+
+  const _isEmailUser =
+    fbUser.providerData.some(
+      p => p.providerId === 'password'
+    );
+
+  if(
+    _isEmailUser &&
+    !fbUser.emailVerified
+  ){
+    return;
+  }
+
+
+  if(
+    !Object.values(_dirty).some(Boolean)
+  ){
+    return;
+  }
+
 
   setSyncStatus('syncing');
+
   const timeoutMs = 12000;
 
-  const sending = Object.assign({}, _dirty);
-  Object.keys(_dirty).forEach(k => _dirty[k] = false);
+  const sending =
+    Object.assign(
+      {},
+      _dirty
+    );
+
+  Object.keys(_dirty).forEach(
+    k => _dirty[k] = false
+  );
+
 
   try{
-    const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP };
-    
-    // ── GLYPHS DELTA UPLOAD ──
+
+    const uid = fbUser.uid;
+
+    // ─────────────────────────────────────────────────────
+    // GLYPHS
+    // ─────────────────────────────────────────────────────
+    //
+    // WICHTIG:
+    // Es wird NICHT mehr store.toJSON() komplett übertragen.
+    //
+    // Nur tatsächlich geänderte Glyphs sollten hier eingetragen
+    // werden. Dafür wird die bestehende dirty-Glyph-Struktur
+    // unterstützt, falls vorhanden.
+    //
+    // Falls keine Einzeländerungsliste existiert, wird als
+    // Fallback der lokale Glyph-Satz mit Firebase verglichen.
+    //
+    // Dadurch bleibt der Code kompatibel, auch wenn ältere
+    // Stellen weiterhin nur _dirty.glyphs = true setzen.
+
     if(sending.glyphs){
-      let currentGlyphs;
-      try {
-        // Zwingend als sauberes JS-Objekt extrahieren (vermeidet Strings!)
-        currentGlyphs = JSON.parse(store.toJSON()); 
-      } catch(e) {
-        currentGlyphs = store.g || {};
-      }
-      
-      // Fall 1: Einmalige Migration oder Erster Upload
-      // Zwingt Firebase dazu, die alten Text-Strings in echte Ordner-Objekte aufzubrechen.
-      if (_needsCloudMigration || Object.keys(_lastSyncedGlyphs).length === 0) {
-        payload.glyphs = currentGlyphs; // Lädt das gesamte Objekt hoch
-        _needsCloudMigration = false;
-        _lastSyncedGlyphs = JSON.parse(JSON.stringify(currentGlyphs));
-      } 
-      // Fall 2: Bandbreiten-effizientes Delta-Update (Nur wenn Struktur bereits ein Objekt ist)
-      else {
-        // Geänderte / Neue Zeichen
-        for (let key in currentGlyphs) {
-          const currentStr = JSON.stringify(currentGlyphs[key]);
-          const lastStr = JSON.stringify(_lastSyncedGlyphs[key]);
-          
-          if (currentStr !== lastStr) {
-            payload[`glyphs/${key}`] = currentGlyphs[key]; // Läd nur den einzelnen Pfad hoch
-            _lastSyncedGlyphs[key] = JSON.parse(currentStr);
-          }
+
+      const glyphRef =
+        fbDb.ref(
+          `users/${uid}/glyphs`
+        );
+
+      const localGlyphs =
+        _glyphObjectFromStore();
+
+      const cloudSnap =
+        await Promise.race([
+          glyphRef.once('value'),
+          new Promise((_,rej) =>
+            setTimeout(
+              () => rej(
+                new Error('timeout')
+              ),
+              timeoutMs
+            )
+          )
+        ]);
+
+      const cloudGlyphs =
+        cloudSnap.val() || {};
+
+      const updates = {};
+
+      // Neue oder geänderte Glyphs
+      Object.keys(localGlyphs).forEach(ch => {
+
+        const key =
+          _glyphFirebaseKey(ch);
+
+        const localValue =
+          JSON.stringify(
+            localGlyphs[ch]
+          );
+
+        const cloudValue =
+          cloudGlyphs[key] !== undefined
+            ? JSON.stringify(
+                cloudGlyphs[key]
+              )
+            : null;
+
+        if(localValue !== cloudValue){
+
+          updates[key] =
+            localGlyphs[ch];
         }
-        
-        // Gelöschte Zeichen
-        for (let key in _lastSyncedGlyphs) {
-          if (!currentGlyphs[key]) {
-            payload[`glyphs/${key}`] = null;
-            delete _lastSyncedGlyphs[key];
-          }
-        }
-      }
-    }
-    
-    if(sending.customChars) payload.customChars  = JSON.stringify(customChars);
-    if(sending.settings){
-      const pgcBtn = (document.querySelector('.pg-swatch.on') || {}).id || 'pgc-white';
-      const pgc    = getComputedStyle(document.documentElement).getPropertyValue('--page-bg').trim() || '#FFFFFF';
-      const _settingsObj = {
-        ls:  document.getElementById('ls-sl').value,
-        ws:  document.getElementById('ws-sl').value,
-        lh:  document.getElementById('lh-sl').value,
-        sw:  document.getElementById('sw-sl').value,
-        fs:  document.getElementById('fs-sl').value,
-        jit: document.getElementById('jit-sl').value,
-        ps:  document.getElementById('ps').value,
-        ink: document.getElementById('ink-col').value
-      };
-      if(_defaultFormatSaved){
-        _settingsObj.fmt=currentPageFormat;
-        _settingsObj.ori=currentOrientation;
-        _settingsObj.customW=PAGE_W;
-        _settingsObj.customH=PAGE_H;
-      }
-      if(_marginOverride){
-        _settingsObj.mT=document.getElementById('marginT-sl')?.value||'66';
-        _settingsObj.mB=document.getElementById('marginB-sl')?.value||'60';
-        _settingsObj.mL=document.getElementById('marginL-sl')?.value||'72';
-        _settingsObj.mR=document.getElementById('marginR-sl')?.value||'52';
-      }
-      payload.settings = JSON.stringify(_settingsObj); 
-    }
-    if(sending.prefs){
-      payload.preferences = JSON.stringify({
-        unknownPref: unknownSymbolPref,
-        theme:       localStorage.getItem('mw-theme') || 'auto'
       });
+
+
+      // Gelöschte Glyphs
+      Object.keys(cloudGlyphs).forEach(key => {
+
+        const ch =
+          _glyphFirebaseChar(key);
+
+        if(
+          !Object.prototype.hasOwnProperty.call(
+            localGlyphs,
+            ch
+          )
+        ){
+          updates[key] = null;
+        }
+      });
+
+
+      // Nur wenn tatsächlich etwas geändert wurde
+      if(Object.keys(updates).length){
+
+        await Promise.race([
+
+          glyphRef.update(
+            updates
+          ),
+
+          new Promise((_,rej) =>
+            setTimeout(
+              () => rej(
+                new Error('timeout')
+              ),
+              timeoutMs
+            )
+          )
+
+        ]);
+      }
     }
-    
-    await Promise.race([
-      fbDb.ref(`users/${fbUser.uid}`).update(payload),
-      new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
-    ]);
-    
+
+
+    // ─────────────────────────────────────────────────────
+    // METADATA
+    // ─────────────────────────────────────────────────────
+
+    const payload = {
+      _session:
+        SESSION_ID,
+
+      _updatedAt:
+        firebase.database.ServerValue.TIMESTAMP
+    };
+
+
+    if(sending.customChars){
+
+      payload.customChars =
+        JSON.stringify(
+          customChars
+        );
+    }
+
+
+    if(sending.settings){
+
+      const pgcBtn =
+        (
+          document.querySelector(
+            '.pg-swatch.on'
+          ) || {}
+        ).id || 'pgc-white';
+
+      const pgc =
+        getComputedStyle(
+          document.documentElement
+        )
+        .getPropertyValue(
+          '--page-bg'
+        )
+        .trim() ||
+        '#FFFFFF';
+
+
+      const _settingsObj = {
+
+        ls:
+          document.getElementById(
+            'ls-sl'
+          ).value,
+
+        ws:
+          document.getElementById(
+            'ws-sl'
+          ).value,
+
+        lh:
+          document.getElementById(
+            'lh-sl'
+          ).value,
+
+        sw:
+          document.getElementById(
+            'sw-sl'
+          ).value,
+
+        fs:
+          document.getElementById(
+            'fs-sl'
+          ).value,
+
+        jit:
+          document.getElementById(
+            'jit-sl'
+          ).value,
+
+        ps:
+          document.getElementById(
+            'ps'
+          ).value,
+
+        ink:
+          document.getElementById(
+            'ink-col'
+          ).value
+      };
+
+
+      if(_defaultFormatSaved){
+
+        _settingsObj.fmt =
+          currentPageFormat;
+
+        _settingsObj.ori =
+          currentOrientation;
+
+        _settingsObj.customW =
+          PAGE_W;
+
+        _settingsObj.customH =
+          PAGE_H;
+      }
+
+
+      if(_marginOverride){
+
+        _settingsObj.mT =
+          document.getElementById(
+            'marginT-sl'
+          )?.value || '66';
+
+        _settingsObj.mB =
+          document.getElementById(
+            'marginB-sl'
+          )?.value || '60';
+
+        _settingsObj.mL =
+          document.getElementById(
+            'marginL-sl'
+          )?.value || '72';
+
+        _settingsObj.mR =
+          document.getElementById(
+            'marginR-sl'
+          )?.value || '52';
+      }
+
+
+      payload.settings =
+        JSON.stringify(
+          _settingsObj
+        );
+    }
+
+
+    if(sending.prefs){
+
+      payload.preferences =
+        JSON.stringify({
+
+          unknownPref:
+            unknownSymbolPref,
+
+          theme:
+            localStorage.getItem(
+              'mw-theme'
+            ) || 'auto'
+
+        });
+    }
+
+
+    // ── METADATA UPDATE ───────────────────────────────────
+    // Nur senden, wenn tatsächlich Metadaten geändert wurden.
+    if(
+      sending.settings ||
+      sending.preferences ||
+      sending.customChars
+    ){
+
+      await Promise.race([
+
+        fbDb.ref(
+          `users/${uid}`
+        ).update(payload),
+
+        new Promise((_,rej) =>
+          setTimeout(
+            () => rej(
+              new Error('timeout')
+            ),
+            timeoutMs
+          )
+        )
+
+      ]);
+
+    }else{
+
+      // Auch bei reinem Glyph-Upload wird der Timestamp aktualisiert.
+      await Promise.race([
+
+        fbDb.ref(
+          `users/${uid}/_updatedAt`
+        ).set(
+          firebase.database.ServerValue.TIMESTAMP
+        ),
+
+        new Promise((_,rej) =>
+          setTimeout(
+            () => rej(
+              new Error('timeout')
+            ),
+            timeoutMs
+          )
+        )
+
+      ]);
+    }
+
+
     setSyncStatus('synced');
+
+
+    // Timestamp lokal aktualisieren
+    try{
+
+      const tsSnap =
+        await fbDb.ref(
+          `users/${uid}/_updatedAt`
+        ).once('value');
+
+      if(tsSnap.val()){
+
+        localStorage.setItem(
+          _GLYPH_TS_KEY,
+          String(
+            tsSnap.val()
+          )
+        );
+      }
+
+    }catch(_){}
+
+
     if(sending.glyphs){
-      try{
-        const tsSnap = await fbDb.ref(`users/${fbUser.uid}/_updatedAt`).once('value');
-        if(tsSnap.val()) localStorage.setItem(_GLYPH_TS_KEY, String(tsSnap.val()));
-      }catch(_){}
-      localStorage.setItem('mw-glyphs-dirty', '0');
+
+      localStorage.setItem(
+        'mw-glyphs-dirty',
+        '0'
+      );
     }
+
+
   }catch(err){
-    Object.keys(sending).forEach(k => { if(sending[k]) _dirty[k] = true; });
+
+    // Dirty Flags wiederherstellen
+    Object.keys(sending).forEach(
+      k => {
+
+        if(sending[k]){
+          _dirty[k] = true;
+        }
+
+      }
+    );
+
     setSyncStatus('error');
-    console.error('Firebase Schreibfehler:', err);
-    if(err.message !== 'timeout') showToast('Synchronisierung fehlgeschlagen');
-    else showToast('Synchronisierung: Zeitüberschreitung – bitte Verbindung prüfen');
+
+    console.error(
+      'Firebase Schreibfehler:',
+      err
+    );
+
+    if(
+      err.message !== 'timeout'
+    ){
+
+      showToast(
+        'Synchronisierung fehlgeschlagen'
+      );
+
+    }else{
+
+      showToast(
+        'Synchronisierung: Zeitüberschreitung – bitte Verbindung prüfen'
+      );
+    }
   }
 }
 

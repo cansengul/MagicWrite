@@ -5680,6 +5680,7 @@ async function signOutUser(){
 // ── FIREBASE LOAD ──────────────────────────────────────────
 let _pendingFirebaseData = null;
 let _lastSyncedGlyphs = {}; // Cacht den letzten Stand für Bandbreiten-effiziente Delta-Updates
+let _needsCloudMigration = false; // FLAG: Erkennt, ob in Firebase noch der alte String liegt
 
 async function loadFromFirebase(){
   if(!fbUser || !fbDb) return;
@@ -5695,20 +5696,17 @@ async function loadFromFirebase(){
   const uid = fbUser.uid;
   try{
     // ── SMART LOAD: check _updatedAt before pulling the heavy glyphs payload ──
-    // Step 1: fetch only the tiny timestamp field (≈ 30 bytes)
     const cachedTs = parseInt(localStorage.getItem(_GLYPH_TS_KEY) || '0');
     const tsSnap = await Promise.race([
       fbDb.ref(`users/${uid}/_updatedAt`).once('value'),
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
-    const cloudTs = tsSnap.val(); // null if no cloud data yet
+    const cloudTs = tsSnap.val(); 
 
     let data;
     let glyphsWereSkipped = false;
 
     if(cloudTs && cachedTs && cloudTs === cachedTs && store.count() > 0 && !_dirty.glyphs){
-      // Timestamp matches AND no pending local changes → glyphs are unchanged.
-      // Fetch only the lightweight metadata fields (skip the big glyphs string).
       const [sSnap, pSnap, ccSnap, sessSnap] = await Promise.all([
         fbDb.ref(`users/${uid}/settings`).once('value'),
         fbDb.ref(`users/${uid}/preferences`).once('value'),
@@ -5721,32 +5719,26 @@ async function loadFromFirebase(){
         customChars: ccSnap.val(),
         _session:    sessSnap.val(),
         _updatedAt:  cloudTs,
-        glyphs:      null   // intentionally null — local IndexedDB is up to date
+        glyphs:      null   
       };
       glyphsWereSkipped = true;
     } else {
-      // Timestamp differs or no cache → full download
       const snap = await Promise.race([
         fbDb.ref(`users/${uid}`).once('value'),
         new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
       ]);
       data = snap.val();
-      // Cache the new timestamp so next load can skip if unchanged
       if(data && data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
     }
 
-    // ── Glyphs confirmed in sync → only apply metadata and done ──
     if(glyphsWereSkipped){
       if(data.settings || data.preferences || data.customChars)
         applyFirebaseData(data, true);
-      // If local glyphs are marked dirty (e.g. scanned before a mid-session reload),
-      // upload them now — the cloud timestamp matched but local has newer data.
       if(_dirty.glyphs && store.count() > 0) scheduleSync();
       setSyncStatus('synced');
       return;
     }
 
-    // ── CASE A: Cloud entirely empty → upload everything silently
     if(!data){
       setSyncStatus('synced');
       if(store.count() > 0){
@@ -5760,17 +5752,20 @@ async function loadFromFirebase(){
     const localKeys  = Object.keys(store.g || {});
     const localCount = localKeys.length;
     
-    // Support für altes String-Format UND neues Objekt-Format für Glyphs
     const cloudGlyphsRaw = data.glyphs || null;
     let cloudObj = {};
     if(cloudGlyphsRaw) {
-        cloudObj = typeof cloudGlyphsRaw === 'string' ? _parseGlyphs(cloudGlyphsRaw) : cloudGlyphsRaw;
+        if (typeof cloudGlyphsRaw === 'string') {
+            cloudObj = _parseGlyphs(cloudGlyphsRaw);
+            _needsCloudMigration = true; // Alter String erkannt -> Migration vormerken
+        } else {
+            cloudObj = cloudGlyphsRaw;
+        }
     }
     
     const cloudKeys  = Object.keys(cloudObj);
     const cloudCount = cloudKeys.length;
 
-    // ── CASE B: No local glyphs → just apply cloud silently
     if(localCount === 0){
       applyFirebaseData(data, true);
       setSyncStatus('synced');
@@ -5778,19 +5773,14 @@ async function loadFromFirebase(){
       return;
     }
 
-    // ── CASE C: Cloud has no glyphs but local does
-    //    → keep local glyphs, only apply settings/prefs from cloud, then upload
     if(cloudCount === 0){
       const dataProtected = Object.assign({}, data, { glyphs: null });
-      // Don't wipe local customChars if cloud has none / empty array
       try{
         const cloudCC = data.customChars ? JSON.parse(data.customChars) : [];
         if(!cloudCC.length) dataProtected.customChars = null;
       }catch(_){ dataProtected.customChars = null; }
       applyFirebaseData(dataProtected, true);
-      // Upload ALL local data to cloud
       Object.keys(_dirty).forEach(k => _dirty[k] = true);
-      // Delay subscribe until after upload to prevent race overwrite
       setTimeout(() => subscribeToFirebase(), 2500);
       scheduleSync();
       setSyncStatus('pending');
@@ -5798,23 +5788,16 @@ async function loadFromFirebase(){
       return;
     }
 
-    // ── CASE D: Same key sets → check if data is identical
     const cloudSet = new Set(cloudKeys);
+    const sameKeys = localKeys.length === cloudKeys.length && localKeys.every(k => cloudSet.has(k));
 
-    const sameKeys = localKeys.length === cloudKeys.length
-                     && localKeys.every(k => cloudSet.has(k));
-
-    // Compare raw glyph data (format-neutral, both sides unwrapped)
     if(sameKeys && _glyphsJSON() === JSON.stringify(cloudObj)){
-      // Perfectly identical → apply non-glyph data only, no prompt
       const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
       applyFirebaseData(dataWithoutGlyphs, true);
       setSyncStatus('synced');
       return;
     }
 
-    // ── CASE E: Cloud is a strict superset (has everything local has + more)
-    //    → ask user — nothing is lost either way but they should decide
     const allLocalInCloud = localKeys.every(k => cloudSet.has(k));
     if(allLocalInCloud && cloudCount > localCount){
       _pendingFirebaseData = data;
@@ -5827,7 +5810,6 @@ async function loadFromFirebase(){
       return;
     }
 
-    // ── CASE F: True conflict → show merge choice modal
     _pendingFirebaseData = data;
     document.getElementById('merge-local-count').textContent = localCount;
     document.getElementById('merge-cloud-count').textContent = cloudCount;
@@ -5842,12 +5824,10 @@ async function loadFromFirebase(){
 }
 
 function mergeKeepLocal(){
-  // Keep local glyphs AND local customChars; merge in any cloud-only custom symbols; upload everything
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
-    // Merge customChars: add cloud symbols not already local (local additions are preserved)
     if(d.customChars){
       try{
         const cloudCC = JSON.parse(d.customChars);
@@ -5856,11 +5836,10 @@ function mergeKeepLocal(){
         _dirty.customChars = true;
       }catch(e){}
     }
-    // Apply only settings/prefs from cloud (no glyphs, no customChars override)
     const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
     applyFirebaseData(dataSettingsOnly, true);
   }
-  buildCustomGrid(); // always refresh custom-char grid after merge
+  buildCustomGrid(); 
   if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
   _dirty.glyphs = true;
   scheduleSync();
@@ -5868,26 +5847,23 @@ function mergeKeepLocal(){
 }
 
 function mergeUseCloud(){
-  // Discard local, load everything from cloud
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
     applyFirebaseData(d, true);
   }
-  buildCustomGrid(); // always refresh custom-char grid after merge
+  buildCustomGrid(); 
   if(curCustomIdx >= 0) refreshCustomChar(); else if(charIdx >= 0) refreshChar();
   showToast('Konto-Zeichen wurden geladen');
 }
 
 function mergeCombine(){
-  // Merge: add cloud chars/symbols that local doesn't have yet; local wins on overlap
   document.getElementById('merge-modal').classList.remove('open');
   if(_pendingFirebaseData){
     const d = _pendingFirebaseData;
     _pendingFirebaseData = null;
 
-    // ── Merge customChars: add cloud symbols not already in local list ──
     if(d.customChars){
       try{
         const cloudCC = JSON.parse(d.customChars);
@@ -5897,11 +5873,9 @@ function mergeCombine(){
       }catch(e){ console.warn('Merge customChars Fehler:', e); }
     }
 
-    // ── Apply settings/prefs from cloud (no glyphs, no customChars override) ──
     const dataSettingsOnly = Object.assign({}, d, { glyphs: null, customChars: null });
     applyFirebaseData(dataSettingsOnly, true);
 
-    // ── Merge glyphs: add cloud chars local doesn't have ──
     if(d.glyphs){
       try{
         const mergeObj = typeof d.glyphs === 'string' ? _parseGlyphs(d.glyphs) : d.glyphs;
@@ -5920,10 +5894,9 @@ function mergeCombine(){
   updateGlyphLimitBar();
 }
 
-// ── FIREBASE SUBSCRIBE (real-time, cross-device) ───────────
+// ── FIREBASE SUBSCRIBE ───────────
 function subscribeToFirebase(){
   if(!fbUser || !fbDb) return;
-  // Guard: email users must be verified
   const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
   if(_isEmailUser && !fbUser.emailVerified) return;
 
@@ -5931,12 +5904,8 @@ function subscribeToFirebase(){
   fbListener = (snap) => {
     const data = snap.val();
     if(!data) return;
-    if(data._session === SESSION_ID) return; // our own write, ignore
+    if(data._session === SESSION_ID) return;
 
-    // ── Protect local glyphs while the user is actively scanning ──
-    // If we have pending local glyph changes (not yet uploaded), a real-time
-    // Firebase event must not overwrite the in-memory store — our upcoming
-    // pushToFirebase() will upload the authoritative local state.
     if(_dirty.glyphs && data.glyphs !== undefined){
       const dataWithoutGlyphs = Object.assign({}, data, { glyphs: null });
       applyFirebaseData(dataWithoutGlyphs, false);
@@ -5944,7 +5913,6 @@ function subscribeToFirebase(){
       return;
     }
 
-    // ── Protect local glyphs: never overwrite with fewer/empty cloud glyphs ──
     const localCount = Object.keys(store.g || {}).length;
     if(localCount > 0 && data.glyphs !== undefined){
       let cloudCount = 0;
@@ -5953,7 +5921,6 @@ function subscribeToFirebase(){
         cloudCount = Object.keys(cloudObj).length;
       }catch(_){}
       if(cloudCount < localCount){
-        // Cloud has fewer glyphs than local — skip glyph portion, apply rest
         const dataProtected = Object.assign({}, data, { glyphs: null });
         applyFirebaseData(dataProtected, false);
         setSyncStatus('synced');
@@ -5962,9 +5929,7 @@ function subscribeToFirebase(){
     }
 
     applyFirebaseData(data, false);
-    // Cache the new timestamp so the next page load skips re-downloading glyphs
     if(data._updatedAt) localStorage.setItem(_GLYPH_TS_KEY, String(data._updatedAt));
-    // Cloud data is now applied — local is in sync, clear the pending-upload flag
     if(data.glyphs) localStorage.setItem('mw-glyphs-dirty', '0');
     setSyncStatus('synced');
     showToast('↻ Von anderem Gerät synchronisiert');
@@ -5981,13 +5946,14 @@ function unsubscribeFromFirebase(){
 
 // ── APPLY FIREBASE DATA ────────────────────────────────────
 function applyFirebaseData(data, isInitialLoad){
-  // Glyphs
   try{
     if(data.glyphs){
       const isString = typeof data.glyphs === 'string';
+      if (isString) _needsCloudMigration = true; // String erkannt! Muss migriert werden.
+      
       const glyphsObj = isString ? _parseGlyphs(data.glyphs) : data.glyphs;
       
-      // Update Delta-Cache für zukünftige Uploads
+      // Cache aktualisieren
       _lastSyncedGlyphs = JSON.parse(JSON.stringify(glyphsObj));
       
       store.fromJSON(isString ? data.glyphs : JSON.stringify(glyphsObj));
@@ -6001,7 +5967,6 @@ function applyFirebaseData(data, isInitialLoad){
     }
   }catch(e){ console.warn('Firebase: Fehler beim Laden der Zeichen', e); }
 
-  // Custom chars
   try{
     if(data.customChars){
       customChars = JSON.parse(data.customChars);
@@ -6011,11 +5976,8 @@ function applyFirebaseData(data, isInitialLoad){
     }
   }catch(e){}
 
-  // Ensure every store key that isn't a standard char is listed in customChars.
-  // Repairs the case where glyphs were synced but customChars was missing/stale.
   _reconcileCustomChars();
 
-  // Settings (only apply on initial load to avoid overwriting live edits)
   if(isInitialLoad){
     try{
       if(data.settings){
@@ -6032,8 +5994,7 @@ function applyFirebaseData(data, isInitialLoad){
         if(s.jit != null){ setEl('jit-sl',s.jit);const l=document.getElementById('jit-val');if(l)l.textContent=parseFloat(s.jit).toFixed(1); }
         if(s.ps  != null){ setEl('ps',s.ps);     const l=document.getElementById('ps-val'); if(l)l.textContent=s.ps; }
         if(s.ink != null){ const el=document.getElementById('ink-col'); if(el) el.value=s.ink; }
-        // Restore page format from cloud (only present if user previously clicked "Als Standard festlegen")
-        if(s.fmt) _defaultFormatSaved = true; // keep syncing fmt on future settings writes
+        if(s.fmt) _defaultFormatSaved = true; 
         if(s.fmt){
           currentPageFormat=s.fmt;
           currentOrientation=s.ori||'portrait';
@@ -6045,18 +6006,15 @@ function applyFirebaseData(data, isInitialLoad){
             if(cfmt){
               const pt=getFmtPt(cfmt,s.ori||'portrait');
               PAGE_W=ptToPx(pt.w); PAGE_H=ptToPx(pt.h);
-              // Pre-set currentLin so ensurePages draws the correct rule style
               if(cfmt.linStyle) currentLin=cfmt.linStyle;
             }
           }
-          // Saved lin overrides format default
           if(s.lin) currentLin=s.lin;
           _applyPageDimensions();
           ensurePages(0);
           ensurePages(1);
           updateFmtToolbarLabel();
         }
-        // Use quiet versions that do NOT call saveSettings() → scheduleSync()
         if(s.lin){
           currentLin = s.lin;
           pagesData.forEach(p => drawLin(p.bgCtx, PAGE_W, PAGE_H, s.lin));
@@ -6066,10 +6024,8 @@ function applyFirebaseData(data, isInitialLoad){
         }
         if(s.customColors){try{customPageColors=JSON.parse(s.customColors);localStorage.setItem('mw-custom-colors',s.customColors);}catch(e){}}
         renderCustomColors();
-        // Snap marginT to the ruling grid after cloud settings are fully applied
         engine.cfg.marginT=66;
         _snapTextToFormatGrid();
-        // Save to cookie (without triggering another cloud sync)
         const exp=new Date(Date.now()+365*24*60*60*1000).toUTCString();
         document.cookie='mw-settings='+encodeURIComponent(JSON.stringify(s))+';expires='+exp+';path=/;SameSite=Lax';
         schedRender();
@@ -6094,19 +6050,14 @@ function scheduleSync(){
   syncTimer = setTimeout(pushToFirebase, 1500);
 }
 
-// Manual-edit debounce: called when the user adds/removes a variant in the Einrichten tab.
-// Saves locally immediately; waits 10 s (resetting on each further change) before uploading.
-// On page reload before the timer fires, the pending-dirty flag triggers the merge modal.
 function scheduleManualSync(){
   _dirty.glyphs = true;
   localStorage.setItem('mw-glyphs-dirty', '1');
-  if(!fbUser || !fbDb){ return; } // no cloud configured — local save is enough
+  if(!fbUser || !fbDb){ return; } 
 
-  // Reset both timers so every new edit restarts the 10-s window
   clearTimeout(_manualEditTimer);
   clearInterval(_manualCountdown);
 
-  // Countdown badge
   let remaining = 10;
   _showCountdownBadge(remaining);
   _manualCountdown = setInterval(() => {
@@ -6135,7 +6086,6 @@ function _showCountdownBadge(seconds){
   badge.className = 'sync-badge sync-pending';
 }
 
-// Flush immediately on tab hide or page unload so no data is lost
 function _flushAllSyncTimers(){
   if(syncTimer){        clearTimeout(syncTimer);        syncTimer       = null; pushToFirebase(); }
   if(_manualEditTimer){ clearTimeout(_manualEditTimer); _manualEditTimer = null; pushToFirebase(); }
@@ -6146,42 +6096,55 @@ window.addEventListener('beforeunload', _flushAllSyncTimers);
 
 async function pushToFirebase(){
   if(!fbUser || !fbDb) return;
-  // Guard: email/password users must verify email before writing
   const _isEmailUser = fbUser.providerData.some(p => p.providerId === 'password');
   if(_isEmailUser && !fbUser.emailVerified) return;
-  // Nothing dirty → nothing to send
   if(!Object.values(_dirty).some(Boolean)) return;
 
   setSyncStatus('syncing');
   const timeoutMs = 12000;
 
-  // Snapshot which fields to send and reset flags before async write
   const sending = Object.assign({}, _dirty);
   Object.keys(_dirty).forEach(k => _dirty[k] = false);
 
   try{
     const payload = { _session: SESSION_ID, _updatedAt: firebase.database.ServerValue.TIMESTAMP };
     
-    // ── GLYPHS DELTA UPLOAD ── (Spart Bandbreite durch gezielte Einzelupdates)
+    // ── GLYPHS DELTA UPLOAD ──
     if(sending.glyphs){
-      const currentGlyphs = store.g || {};
-      
-      // 1. Finde geänderte oder neu hinzugefügte Zeichen
-      for (let key in currentGlyphs) {
-        const currentStr = JSON.stringify(currentGlyphs[key]);
-        const lastStr = JSON.stringify(_lastSyncedGlyphs[key]);
-        
-        if (currentStr !== lastStr) {
-          payload[`glyphs/${key}`] = currentGlyphs[key];
-          _lastSyncedGlyphs[key] = JSON.parse(currentStr); // Cache aktualisieren
-        }
+      let currentGlyphs;
+      try {
+        // Zwingend als sauberes JS-Objekt extrahieren (vermeidet Strings!)
+        currentGlyphs = JSON.parse(store.toJSON()); 
+      } catch(e) {
+        currentGlyphs = store.g || {};
       }
       
-      // 2. Finde gelöschte Zeichen (im Cache vorhanden, aber nicht mehr lokal)
-      for (let key in _lastSyncedGlyphs) {
-        if (!currentGlyphs[key]) {
-          payload[`glyphs/${key}`] = null; // Entfernt den Knoten gezielt aus Firebase
-          delete _lastSyncedGlyphs[key];
+      // Fall 1: Einmalige Migration oder Erster Upload
+      // Zwingt Firebase dazu, die alten Text-Strings in echte Ordner-Objekte aufzubrechen.
+      if (_needsCloudMigration || Object.keys(_lastSyncedGlyphs).length === 0) {
+        payload.glyphs = currentGlyphs; // Lädt das gesamte Objekt hoch
+        _needsCloudMigration = false;
+        _lastSyncedGlyphs = JSON.parse(JSON.stringify(currentGlyphs));
+      } 
+      // Fall 2: Bandbreiten-effizientes Delta-Update (Nur wenn Struktur bereits ein Objekt ist)
+      else {
+        // Geänderte / Neue Zeichen
+        for (let key in currentGlyphs) {
+          const currentStr = JSON.stringify(currentGlyphs[key]);
+          const lastStr = JSON.stringify(_lastSyncedGlyphs[key]);
+          
+          if (currentStr !== lastStr) {
+            payload[`glyphs/${key}`] = currentGlyphs[key]; // Läd nur den einzelnen Pfad hoch
+            _lastSyncedGlyphs[key] = JSON.parse(currentStr);
+          }
+        }
+        
+        // Gelöschte Zeichen
+        for (let key in _lastSyncedGlyphs) {
+          if (!currentGlyphs[key]) {
+            payload[`glyphs/${key}`] = null;
+            delete _lastSyncedGlyphs[key];
+          }
         }
       }
     }
@@ -6200,21 +6163,19 @@ async function pushToFirebase(){
         ps:  document.getElementById('ps').value,
         ink: document.getElementById('ink-col').value
       };
-      // Only sync page format to cloud when the user explicitly clicked "Als Standard festlegen"
       if(_defaultFormatSaved){
         _settingsObj.fmt=currentPageFormat;
         _settingsObj.ori=currentOrientation;
         _settingsObj.customW=PAGE_W;
         _settingsObj.customH=PAGE_H;
       }
-      // Only sync margins when the user manually adjusted them
       if(_marginOverride){
         _settingsObj.mT=document.getElementById('marginT-sl')?.value||'66';
         _settingsObj.mB=document.getElementById('marginB-sl')?.value||'60';
         _settingsObj.mL=document.getElementById('marginL-sl')?.value||'72';
         _settingsObj.mR=document.getElementById('marginR-sl')?.value||'52';
       }
-      payload.settings = JSON.stringify(_settingsObj); // lin, pgc etc. are local-only
+      payload.settings = JSON.stringify(_settingsObj); 
     }
     if(sending.prefs){
       payload.preferences = JSON.stringify({
@@ -6223,25 +6184,20 @@ async function pushToFirebase(){
       });
     }
     
-    // Sende den kombinierten Payload (inklusive einzelner Glyph-Pfade) an Firebase
     await Promise.race([
       fbDb.ref(`users/${fbUser.uid}`).update(payload),
       new Promise((_,rej) => setTimeout(() => rej(new Error('timeout')), timeoutMs))
     ]);
     
     setSyncStatus('synced');
-    // After a successful glyph upload, read back the server-written _updatedAt so the
-    // NEXT page load recognises the timestamp and skips re-downloading the glyphs.
     if(sending.glyphs){
       try{
         const tsSnap = await fbDb.ref(`users/${fbUser.uid}/_updatedAt`).once('value');
         if(tsSnap.val()) localStorage.setItem(_GLYPH_TS_KEY, String(tsSnap.val()));
       }catch(_){}
-      // Glyphs are now in sync — clear the pending-upload flag
       localStorage.setItem('mw-glyphs-dirty', '0');
     }
   }catch(err){
-    // Restore dirty flags so next sync retries the failed fields
     Object.keys(sending).forEach(k => { if(sending[k]) _dirty[k] = true; });
     setSyncStatus('error');
     console.error('Firebase Schreibfehler:', err);
@@ -6249,6 +6205,7 @@ async function pushToFirebase(){
     else showToast('Synchronisierung: Zeitüberschreitung – bitte Verbindung prüfen');
   }
 }
+
 
 
 

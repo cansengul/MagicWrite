@@ -2406,6 +2406,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
+<script src="https://gstatic.com"></script>
 <script>
 'use strict';
 
@@ -2421,8 +2422,11 @@ const FIREBASE_CONFIG = {
   projectId:         "magicwrite-a3d87",
   storageBucket:     "magicwrite-a3d87.firebasestorage.app",
   messagingSenderId: "903002520714",
-  appId:             "1:903002520714:web:33dede8b65f9d12fe00173"
+  appId:             "1:903002520714:web:33dede8b65f9d12fe00173",
+  measurementId:     "G-XSF4YVENQR"
 };
+
+const analytics = firebase.analytics();
 
 // ── GLYPH LIMIT ─────────────────────────────────────────────
 // Storage-based limit — matches the Firebase Realtime DB rule for the glyphs field.

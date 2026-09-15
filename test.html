@@ -5333,7 +5333,7 @@ document.addEventListener('input',e=>{
 
 const SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
-let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
+let fbApp = null, fbAuth = null, fbDb = null, fbUser = null, fbAnalytics = null;
 let fbListener = null;
 let syncTimer = null;
 let _manualEditTimer  = null; // 10-s debounce for manual Einrichten-tab changes
@@ -5349,10 +5349,11 @@ function initFirebase(){
     return;
   }
   try{
-    fbApp  = firebase.initializeApp(FIREBASE_CONFIG);
-    fbAuth = firebase.auth();
-    fbDb   = firebase.database();
-    fbReady = true;
+    fbApp       = firebase.initializeApp(FIREBASE_CONFIG);
+    fbAuth      = firebase.auth();
+    fbDb        = firebase.database();
+    fbAnalytics = firebase.analytics();
+    fbReady     = true;
 
     // Auth state
     fbAuth.onAuthStateChanged(async user => {

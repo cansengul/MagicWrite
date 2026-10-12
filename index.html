@@ -159,12 +159,38 @@ window.addEventListener('appinstalled', function(){
 });
 </script>
 
-<!-- Icons / favicon -->
-<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="./icons/icon-512.png">
-<link rel="shortcut icon" type="image/png" href="./icons/favicon-32.png">
+<!-- ================================================================= -->
+<!-- 1. STRUCTURED DATA FOR SITE NAME (Zwingt Google zum Namen "MagicWrite") -->
+<!-- ================================================================= -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "MagicWrite",
+  "url": "https://cansengul.github.io/MagicWrite/"
+}
+</script>
 
+<!-- ================================================================= -->
+<!-- 2. SOCIAL MEDIA & SEO META TAGS (Unterstützt den Namen zusätzlich) -->
+<!-- ================================================================= -->
+<meta property="og:site_name" content="MagicWrite">
+<meta property="og:title" content="MagicWrite">
+<meta name="description" content="MagicWrite verwandelt deinen Text in deine persönliche Handschrift. Du scannst deine Buchstaben einmalig ein. Text zu Handschrift Keine Anmeldung unbegrenzt kostenlos">
+
+<!-- ================================================================= -->
+<!-- 3. GOOGLE FAVICON SPECIFICATION (Absolute URLs für fehlerfreies Crawlen) -->
+<!-- ================================================================= -->
+<!-- WICHTIG: Erstellen Sie eine 48x48 Pixel Version für Google! -->
+<link rel="icon" type="image/png" sizes="48x48" href="https://cansengul.github.io/MagicWrite/icons/favicon-48.png">
+
+<!-- Ihre bestehenden Icons mit den korrigierten, absoluten Pfaden -->
+<link rel="icon" type="image/png" sizes="32x32" href="https://cansengul.github.io/MagicWrite/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="https://cansengul.github.io/MagicWrite/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="https://cansengul.github.io/MagicWrite/icons/icon-512.png">
+<link rel="shortcut icon" type="image/png" href="https://cansengul.github.io/MagicWrite/icons/favicon-32.png">
+
+     
 <!-- Critical CSS is inlined first so the correct background/theme paints
      immediately, before any network request finishes. Fonts and the
      (large) third-party scripts below are non-blocking (preconnect +

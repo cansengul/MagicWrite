@@ -2,7 +2,7 @@
 <html lang="de" data-theme="auto">
 <head>
 <meta charset="UTF-8">
-<!-- 
+<!--
 Source - https://stackoverflow.com/a/66012902
 Posted by PeteLe
 Retrieved 2026-07-13, License - CC BY-SA 4.0
@@ -1502,6 +1502,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 #uwrite-announcement{
   position:fixed;inset:0;z-index:11000;display:none;
   align-items:center;justify-content:center;padding:20px;
+  pointer-events:auto;
   background:rgba(20,24,34,.42);
   backdrop-filter:blur(20px) saturate(145%);-webkit-backdrop-filter:blur(20px) saturate(145%);
 }
@@ -1510,6 +1511,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 .announcement-card{
   position:relative;width:min(100%,520px);max-height:calc(100dvh - 40px);overflow-y:auto;
   padding:30px 30px 26px;border:1px solid rgba(255,255,255,.55);border-radius:28px;
+  pointer-events:auto;
   color:var(--ink);background:rgba(255,255,255,.82);
   box-shadow:0 28px 90px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.8);
   backdrop-filter:blur(36px) saturate(180%);-webkit-backdrop-filter:blur(36px) saturate(180%);
@@ -1520,6 +1522,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 #uwrite-announcement.is-closing .announcement-card{animation:announcement-card-out .22s ease both}
 .announcement-close{
   position:absolute;top:15px;right:15px;width:32px;height:32px;display:grid;place-items:center;
+  z-index:2;pointer-events:auto;
   border:0;border-radius:50%;color:var(--ink-soft);background:rgba(120,120,128,.12);
   cursor:pointer;transition:background var(--tr),transform var(--tr);
 }
@@ -1533,25 +1536,33 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   box-shadow:0 12px 30px rgba(25,51,95,.18),inset 0 1px 2px rgba(255,255,255,.9);
 }
 .announcement-logo-layer{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit}
-.announcement-logo-layer img{width:100%;height:100%;object-fit:cover}
+.announcement-logo-layer img{display:block;width:72px;height:72px;object-fit:contain}
 .announcement-logo-layer::after{
-  display:none;content:"";width:100%;height:100%;place-items:center;color:#fff;
-  font-size:23px;font-weight:750;letter-spacing:-1.5px;background:linear-gradient(145deg,#59a7ff,#6c58e8);
+  display:none;content:"";width:72px;height:72px;place-items:center;color:#fff;
+  border-radius:18%;font-size:23px;font-weight:750;letter-spacing:-1.5px;
+  background:linear-gradient(145deg,#59a7ff,#6c58e8);
 }
 .announcement-logo-layer.is-fallback::after{display:grid}
-.announcement-logo-old{animation:announcement-logo-old .95s cubic-bezier(.2,.8,.2,1) both}
 .announcement-logo-old.is-fallback::after{content:"MW"}
-.announcement-logo-new{opacity:0;animation:announcement-logo-new .72s .42s cubic-bezier(.2,.85,.25,1.25) both}
+.announcement-logo-new{opacity:0;transform:scale(.75)}
 .announcement-logo-new.is-fallback::after{content:"uW"}
 .announcement-brand-pill{
   display:flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--ui-border);
   border-radius:var(--r-full);background:rgba(255,255,255,.46);color:var(--ink-soft);
-  font-size:11px;font-weight:600;letter-spacing:.01em;animation:announcement-pill-in .45s .55s ease both;
+  font-size:11px;font-weight:600;letter-spacing:.01em;
 }
 [data-theme="dark"] .announcement-brand-pill{background:rgba(255,255,255,.06)}
 @media (prefers-color-scheme:dark){[data-theme="auto"] .announcement-brand-pill{background:rgba(255,255,255,.06)}}
 .announcement-brand-pill strong{color:var(--ink)}
-.announcement-brand-arrow{color:var(--accent);font-size:14px}
+.announcement-brand-arrow{color:var(--accent);font-size:14px;opacity:0}
+.announcement-name-old,.announcement-name-new{display:inline-block}
+.announcement-name-new{opacity:0}
+#uwrite-announcement.open .announcement-logo-old{animation:announcement-logo-old 1.8s cubic-bezier(.22,1,.36,1) both}
+#uwrite-announcement.open .announcement-logo-new{animation:announcement-logo-new 1.8s cubic-bezier(.22,1,.36,1) both}
+#uwrite-announcement.open .announcement-icon{animation:announcement-icon-glow 1.8s ease both}
+#uwrite-announcement.open .announcement-name-old{animation:announcement-name-old 1.8s ease both}
+#uwrite-announcement.open .announcement-name-new{animation:announcement-name-new 1.8s cubic-bezier(.22,1,.36,1) both}
+#uwrite-announcement.open .announcement-brand-arrow{animation:announcement-arrow-in 1.8s ease both}
 .announcement-heading{margin:0;text-align:center;font-size:25px;line-height:1.15;font-weight:750;letter-spacing:-.7px}
 .announcement-intro{margin:9px auto 22px;max-width:390px;text-align:center;color:var(--ink-soft);font-size:14px;line-height:1.5}
 .announcement-intro strong{color:var(--ink);font-weight:650}
@@ -1589,17 +1600,33 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 @keyframes announcement-card-in{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes announcement-card-out{to{opacity:0;transform:translateY(8px) scale(.98)}}
 @keyframes announcement-logo-old{
-  0%{opacity:0;transform:scale(.86) rotate(-8deg);filter:blur(5px)}
-  25%{opacity:1;transform:scale(1.04) rotate(2deg);filter:drop-shadow(0 0 12px rgba(0,122,255,.4))}
-  65%{opacity:1;transform:scale(1) rotate(0);filter:none}
-  100%{opacity:0;transform:scale(.9) rotate(4deg);filter:blur(3px)}
+  0%,35%{opacity:1;transform:scale(1) rotate(0);filter:blur(0)}
+  50%{opacity:.55;transform:scale(.85) rotate(-6deg);filter:blur(4px)}
+  65%,100%{opacity:0;transform:scale(.7) rotate(-12deg);filter:blur(8px)}
 }
 @keyframes announcement-logo-new{
-  0%{opacity:0;transform:scale(.85) rotate(-5deg);filter:blur(4px)}
-  68%{opacity:1;transform:scale(1.04) rotate(1deg);filter:blur(0)}
-  100%{opacity:1;transform:scale(1) rotate(0);filter:none}
+  0%,35%{opacity:0;transform:scale(.75) rotate(0);filter:blur(8px)}
+  65%{opacity:0;transform:scale(.75) rotate(-12deg);filter:blur(8px)}
+  86%{opacity:1;transform:scale(1.06) rotate(0);filter:blur(0)}
+  100%{opacity:1;transform:scale(1) rotate(0);filter:blur(0)}
 }
-@keyframes announcement-pill-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes announcement-icon-glow{
+  0%,35%,100%{box-shadow:0 12px 30px rgba(25,51,95,.18),inset 0 1px 2px rgba(255,255,255,.9)}
+  50%,65%{box-shadow:0 0 34px rgba(0,122,255,.48),0 12px 36px rgba(25,51,95,.24),inset 0 1px 4px rgba(255,255,255,1)}
+}
+@keyframes announcement-name-old{
+  0%,35%{opacity:1;transform:translateY(0)}
+  65%,100%{opacity:0;transform:translateY(-4px)}
+}
+@keyframes announcement-name-new{
+  0%,65%{opacity:0;transform:translateY(4px)}
+  86%{opacity:1;transform:translateY(-1px)}
+  100%{opacity:1;transform:translateY(0)}
+}
+@keyframes announcement-arrow-in{
+  0%,45%{opacity:0;transform:scale(.8)}
+  70%,100%{opacity:1;transform:scale(1)}
+}
 @media (max-width:480px){
   #uwrite-announcement{padding:12px}
   .announcement-card{max-height:calc(100dvh - 24px);padding:26px 19px 20px;border-radius:23px}
@@ -1609,7 +1636,13 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
   .announcement-data-note{font-size:11px}
 }
 @media (prefers-reduced-motion:reduce){
-  #uwrite-announcement.open,.announcement-card,.announcement-logo-old,.announcement-logo-new,.announcement-brand-pill{
+  #uwrite-announcement.open,.announcement-card,
+  #uwrite-announcement.open .announcement-logo-old,
+  #uwrite-announcement.open .announcement-logo-new,
+  #uwrite-announcement.open .announcement-icon,
+  #uwrite-announcement.open .announcement-name-old,
+  #uwrite-announcement.open .announcement-name-new,
+  #uwrite-announcement.open .announcement-brand-arrow{
     animation-duration:.01ms!important;animation-delay:0ms!important;
   }
 }
@@ -1927,7 +1960,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 <!-- UWRITE ANNOUNCEMENT -->
 <div id="uwrite-announcement" aria-hidden="true">
   <section class="announcement-card" role="dialog" aria-modal="true" aria-labelledby="announcement-heading" aria-describedby="announcement-intro">
-    <button class="announcement-close" type="button" aria-label="Mitteilung schließen" onclick="closeUwriteAnnouncement()">
+    <button class="announcement-close" type="button" aria-label="Mitteilung schließen">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
     </button>
     <div class="announcement-brand" aria-label="MagicWrite wird zu uWrite">
@@ -1939,7 +1972,11 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
           <img src="/icons/uwrite-logo-mark.png" alt="" onerror="this.hidden=true;this.parentElement.classList.add('is-fallback')">
         </span>
       </div>
-      <div class="announcement-brand-pill"><strong>MagicWrite</strong><span class="announcement-brand-arrow" aria-hidden="true">→</span><strong>uWrite</strong></div>
+      <div class="announcement-brand-pill" aria-label="MagicWrite wird zu uWrite">
+        <strong class="announcement-name-old">MagicWrite</strong>
+        <span class="announcement-brand-arrow" aria-hidden="true">→</span>
+        <strong class="announcement-name-new">uWrite</strong>
+      </div>
     </div>
     <h2 class="announcement-heading" id="announcement-heading">Es gibt Neuigkeiten</h2>
     <p class="announcement-intro" id="announcement-intro">MagicWrite wird bald zu <strong>uWrite</strong> – das erwartet dich:</p>
@@ -1969,7 +2006,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
       <p>Deine bisherigen Daten und Einstellungen gehen nicht verloren: Du kannst sie bald mit nur wenigen Klicks ganz einfach zu uWrite übertragen. Wir halten dich auf dem Laufenden und benachrichtigen dich sofort, sobald uWrite startet.</p>
     </div>
-    <button class="announcement-cta" type="button" onclick="acknowledgeUwriteAnnouncement()">Halte mich auf dem Laufenden</button>
+    <button class="announcement-cta" type="button">Halte mich auf dem Laufenden</button>
   </section>
 </div>
 
@@ -7137,7 +7174,7 @@ if('serviceWorker' in navigator){
     if(closeButton) closeButton.focus();
   }
 
-  window.closeUwriteAnnouncement = function(){
+  function closeAnnouncement(){
     if(!modal.classList.contains('open') || modal.classList.contains('is-closing')) return;
     modal.classList.add('is-closing');
     modal.setAttribute('aria-hidden', 'true');
@@ -7146,18 +7183,20 @@ if('serviceWorker' in navigator){
     }, CLOSE_DELAY);
   };
 
-  window.acknowledgeUwriteAnnouncement = function(){
+  function acknowledgeAnnouncement(){
     localStorage.setItem(STORAGE_KEY, '1');
-    window.closeUwriteAnnouncement();
+    closeAnnouncement();
     window.setTimeout(function(){ showToast('Alles klar, wir informieren dich zum Start!'); }, CLOSE_DELAY);
-  };
+  }
 
+  modal.querySelector('.announcement-close').addEventListener('click', closeAnnouncement);
+  modal.querySelector('.announcement-cta').addEventListener('click', acknowledgeAnnouncement);
   modal.addEventListener('click', function(event){
-    if(event.target === modal) window.closeUwriteAnnouncement();
+    if(event.target === modal) closeAnnouncement();
   });
   document.addEventListener('keydown', function(event){
     if(event.key === 'Escape' && modal.classList.contains('open')){
-      window.closeUwriteAnnouncement();
+      closeAnnouncement();
     }
   });
 

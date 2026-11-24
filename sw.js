@@ -1,7 +1,7 @@
 // MagicWrite – Service Worker
 // Offline-PWA + Firebase/Google Analytics
 
-const CACHE_VERSION = 'magicwrite-v5';
+const CACHE_VERSION = 'magicwrite-v6';
 
 const APP_SHELL = [
   './',
@@ -14,6 +14,11 @@ const APP_SHELL = [
   './icons/apple-touch-icon.png',
   './icons/favicon-32.png',
   './icons/logo-mark.png',
+  './icons/uwrite-logo-mark.png',
+];
+
+const OPTIONAL_APP_SHELL = [
+  './icons/uwrite-logo-mark.png',
 ];
 
 const CDN_SHELL = [
@@ -36,8 +41,15 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_VERSION).then(async (cache) => {
 
-      // Eigene Dateien
-      await cache.addAll(APP_SHELL);
+      // Eigene Dateien; das neue Logo kann in lokalen Entwicklungsständen fehlen.
+      await cache.addAll(APP_SHELL.filter((url) => !OPTIONAL_APP_SHELL.includes(url)));
+      await Promise.all(
+        OPTIONAL_APP_SHELL.map((url) =>
+          cache.add(url).catch((error) => {
+            console.warn(`Optionales Offline-Asset konnte nicht vorgeladen werden: ${url}`, error);
+          })
+        )
+      );
 
       // CDN-Dateien best effort cachen
       await Promise.all(

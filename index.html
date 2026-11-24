@@ -1497,6 +1497,122 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 }
 #pwa-install-btn:hover{opacity:0.88}
 #pwa-install-btn:active{transform:scale(0.97)}
+
+/* ── UWRITE ANNOUNCEMENT ── */
+#uwrite-announcement{
+  position:fixed;inset:0;z-index:11000;display:none;
+  align-items:center;justify-content:center;padding:20px;
+  background:rgba(20,24,34,.42);
+  backdrop-filter:blur(20px) saturate(145%);-webkit-backdrop-filter:blur(20px) saturate(145%);
+}
+#uwrite-announcement.open{display:flex;animation:announcement-backdrop-in .32s ease both}
+#uwrite-announcement.open.is-closing{animation:announcement-backdrop-out .24s ease both}
+.announcement-card{
+  position:relative;width:min(100%,520px);max-height:calc(100dvh - 40px);overflow-y:auto;
+  padding:30px 30px 26px;border:1px solid rgba(255,255,255,.55);border-radius:28px;
+  color:var(--ink);background:rgba(255,255,255,.82);
+  box-shadow:0 28px 90px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.8);
+  backdrop-filter:blur(36px) saturate(180%);-webkit-backdrop-filter:blur(36px) saturate(180%);
+  animation:announcement-card-in .52s cubic-bezier(.2,.8,.2,1) both;
+}
+[data-theme="dark"] .announcement-card{background:rgba(36,37,42,.86);border-color:rgba(255,255,255,.14)}
+@media (prefers-color-scheme:dark){[data-theme="auto"] .announcement-card{background:rgba(36,37,42,.86);border-color:rgba(255,255,255,.14)}}
+#uwrite-announcement.is-closing .announcement-card{animation:announcement-card-out .22s ease both}
+.announcement-close{
+  position:absolute;top:15px;right:15px;width:32px;height:32px;display:grid;place-items:center;
+  border:0;border-radius:50%;color:var(--ink-soft);background:rgba(120,120,128,.12);
+  cursor:pointer;transition:background var(--tr),transform var(--tr);
+}
+.announcement-close:hover{background:rgba(120,120,128,.22);transform:scale(1.05)}
+.announcement-close svg{width:16px;height:16px}
+.announcement-brand{display:flex;flex-direction:column;align-items:center;gap:12px;margin:2px 0 20px}
+.announcement-icon{
+  position:relative;width:76px;height:76px;overflow:hidden;border-radius:22%;isolation:isolate;
+  background:linear-gradient(145deg,rgba(255,255,255,.92),rgba(226,233,246,.58));
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:0 12px 30px rgba(25,51,95,.18),inset 0 1px 2px rgba(255,255,255,.9);
+}
+.announcement-logo-layer{position:absolute;inset:0;display:grid;place-items:center;border-radius:inherit}
+.announcement-logo-layer img{width:100%;height:100%;object-fit:cover}
+.announcement-logo-layer::after{
+  display:none;content:"";width:100%;height:100%;place-items:center;color:#fff;
+  font-size:23px;font-weight:750;letter-spacing:-1.5px;background:linear-gradient(145deg,#59a7ff,#6c58e8);
+}
+.announcement-logo-layer.is-fallback::after{display:grid}
+.announcement-logo-old{animation:announcement-logo-old .95s cubic-bezier(.2,.8,.2,1) both}
+.announcement-logo-old.is-fallback::after{content:"MW"}
+.announcement-logo-new{opacity:0;animation:announcement-logo-new .72s .42s cubic-bezier(.2,.85,.25,1.25) both}
+.announcement-logo-new.is-fallback::after{content:"uW"}
+.announcement-brand-pill{
+  display:flex;align-items:center;gap:8px;padding:6px 11px;border:1px solid var(--ui-border);
+  border-radius:var(--r-full);background:rgba(255,255,255,.46);color:var(--ink-soft);
+  font-size:11px;font-weight:600;letter-spacing:.01em;animation:announcement-pill-in .45s .55s ease both;
+}
+[data-theme="dark"] .announcement-brand-pill{background:rgba(255,255,255,.06)}
+@media (prefers-color-scheme:dark){[data-theme="auto"] .announcement-brand-pill{background:rgba(255,255,255,.06)}}
+.announcement-brand-pill strong{color:var(--ink)}
+.announcement-brand-arrow{color:var(--accent);font-size:14px}
+.announcement-heading{margin:0;text-align:center;font-size:25px;line-height:1.15;font-weight:750;letter-spacing:-.7px}
+.announcement-intro{margin:9px auto 22px;max-width:390px;text-align:center;color:var(--ink-soft);font-size:14px;line-height:1.5}
+.announcement-intro strong{color:var(--ink);font-weight:650}
+.announcement-features{display:flex;flex-direction:column;gap:9px}
+.announcement-feature{
+  display:flex;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--ui-border);
+  border-radius:15px;background:rgba(255,255,255,.42);
+}
+[data-theme="dark"] .announcement-feature{background:rgba(255,255,255,.035)}
+@media (prefers-color-scheme:dark){[data-theme="auto"] .announcement-feature{background:rgba(255,255,255,.035)}}
+.announcement-feature-icon{
+  width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;
+  border-radius:11px;background:var(--accent-lt);color:var(--accent);
+}
+.announcement-feature-icon svg{width:18px;height:18px}
+.announcement-feature h3{margin:1px 0 4px;font-size:13px;font-weight:700;letter-spacing:-.1px}
+.announcement-feature p{color:var(--ink-soft);font-size:12px;line-height:1.45}
+.announcement-data-note{
+  display:flex;align-items:flex-start;gap:10px;margin-top:13px;padding:12px;
+  border:1px solid rgba(52,199,89,.2);border-radius:14px;
+  background:rgba(52,199,89,.075);color:var(--ink-soft);font-size:11.5px;line-height:1.5;
+}
+.announcement-data-note svg{width:17px;height:17px;flex:0 0 17px;margin-top:1px;color:var(--success)}
+.announcement-cta{
+  width:100%;min-height:48px;margin-top:17px;padding:12px 16px;border:0;border-radius:14px;
+  background:var(--accent);color:#fff;font:600 14px -apple-system,'SF Pro Text',sans-serif;
+  cursor:pointer;box-shadow:0 7px 16px rgba(0,122,255,.22);
+  transition:transform var(--tr),filter var(--tr);
+}
+.announcement-cta:hover{filter:brightness(1.06);transform:translateY(-1px)}
+.announcement-cta:active{transform:scale(.985)}
+.announcement-cta:focus-visible,.announcement-close:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+@keyframes announcement-backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes announcement-backdrop-out{to{opacity:0}}
+@keyframes announcement-card-in{from{opacity:0;transform:translateY(16px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes announcement-card-out{to{opacity:0;transform:translateY(8px) scale(.98)}}
+@keyframes announcement-logo-old{
+  0%{opacity:0;transform:scale(.86) rotate(-8deg);filter:blur(5px)}
+  25%{opacity:1;transform:scale(1.04) rotate(2deg);filter:drop-shadow(0 0 12px rgba(0,122,255,.4))}
+  65%{opacity:1;transform:scale(1) rotate(0);filter:none}
+  100%{opacity:0;transform:scale(.9) rotate(4deg);filter:blur(3px)}
+}
+@keyframes announcement-logo-new{
+  0%{opacity:0;transform:scale(.85) rotate(-5deg);filter:blur(4px)}
+  68%{opacity:1;transform:scale(1.04) rotate(1deg);filter:blur(0)}
+  100%{opacity:1;transform:scale(1) rotate(0);filter:none}
+}
+@keyframes announcement-pill-in{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@media (max-width:480px){
+  #uwrite-announcement{padding:12px}
+  .announcement-card{max-height:calc(100dvh - 24px);padding:26px 19px 20px;border-radius:23px}
+  .announcement-heading{font-size:23px}
+  .announcement-intro{font-size:13px;margin-bottom:17px}
+  .announcement-feature{padding:10px;gap:10px}
+  .announcement-data-note{font-size:11px}
+}
+@media (prefers-reduced-motion:reduce){
+  #uwrite-announcement.open,.announcement-card,.announcement-logo-old,.announcement-logo-new,.announcement-brand-pill{
+    animation-duration:.01ms!important;animation-delay:0ms!important;
+  }
+}
 </style>
 </head>
 <body>
@@ -1807,6 +1923,55 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-lt)}
 
 </div><!-- /shell-body -->
 </div><!-- /shell -->
+
+<!-- UWRITE ANNOUNCEMENT -->
+<div id="uwrite-announcement" aria-hidden="true">
+  <section class="announcement-card" role="dialog" aria-modal="true" aria-labelledby="announcement-heading" aria-describedby="announcement-intro">
+    <button class="announcement-close" type="button" aria-label="Mitteilung schließen" onclick="closeUwriteAnnouncement()">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+    <div class="announcement-brand" aria-label="MagicWrite wird zu uWrite">
+      <div class="announcement-icon" aria-hidden="true">
+        <span class="announcement-logo-layer announcement-logo-old">
+          <img src="/icons/logo-mark.png" alt="" onerror="this.hidden=true;this.parentElement.classList.add('is-fallback')">
+        </span>
+        <span class="announcement-logo-layer announcement-logo-new">
+          <img src="/icons/uwrite-logo-mark.png" alt="" onerror="this.hidden=true;this.parentElement.classList.add('is-fallback')">
+        </span>
+      </div>
+      <div class="announcement-brand-pill"><strong>MagicWrite</strong><span class="announcement-brand-arrow" aria-hidden="true">→</span><strong>uWrite</strong></div>
+    </div>
+    <h2 class="announcement-heading" id="announcement-heading">Es gibt Neuigkeiten</h2>
+    <p class="announcement-intro" id="announcement-intro">MagicWrite wird bald zu <strong>uWrite</strong> – das erwartet dich:</p>
+
+    <div class="announcement-features">
+      <article class="announcement-feature">
+        <span class="announcement-feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m14.5 5.5 4 4M4 20l4.3-.9L19 8.4a2.1 2.1 0 0 0-3-3L5.3 16.1 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M12 20h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </span>
+        <div><h3>Bearbeitbare Handschrift für GoodNotes</h3><p>Füge deine Texte als echte, bearbeitbare Handschrift direkt in GoodNotes ein – so, als hättest du sie selbst geschrieben.</p></div>
+      </article>
+      <article class="announcement-feature">
+        <span class="announcement-feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 3.8h9l5 5V20a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4.8a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M14 4v5h5M8 13h8M8 17h8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+        <div><h3>Originalgetreue GoodNotes-Papiervorlagen</h3><p>Nutze passende Papiervorlagen im Original-Look, damit niemand merkt, dass uWrite die Arbeit für dich übernommen hat.</p></div>
+      </article>
+      <article class="announcement-feature">
+        <span class="announcement-feature-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none"><path d="m13 2-3 8h7l-6 12 1-9H5l8-11Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+        </span>
+        <div><h3>Neues Design &amp; spürbar schneller</h3><p>Eine modernisierte Oberfläche und eine rundum optimierte App für noch flüssigeres Arbeiten.</p></div>
+      </article>
+    </div>
+
+    <div class="announcement-data-note">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 2.9 8.1 7 10 4.1-1.9 7-5.3 7-10V6l-7-3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <p>Deine bisherigen Daten und Einstellungen gehen nicht verloren: Du kannst sie bald mit nur wenigen Klicks ganz einfach zu uWrite übertragen. Wir halten dich auf dem Laufenden und benachrichtigen dich sofort, sobald uWrite startet.</p>
+    </div>
+    <button class="announcement-cta" type="button" onclick="acknowledgeUwriteAnnouncement()">Halte mich auf dem Laufenden</button>
+  </section>
+</div>
 
 <!-- EMAIL VERIFICATION REQUIRED MODAL -->
 <div id="verify-required-modal">
@@ -6879,7 +7044,7 @@ if('serviceWorker' in navigator){
     (/Macintosh/i.test(ua) && navigator.maxTouchPoints > 1);
 
   // IDs of higher-priority modals that must not be obscured
-  var PRIORITY_MODALS = ['limit-modal','login-modal','merge-modal',
+  var PRIORITY_MODALS = ['uwrite-announcement','limit-modal','login-modal','merge-modal',
                          'reauth-modal','verify-required-modal'];
 
   function isHighPriorityModalOpen(){
@@ -6952,6 +7117,54 @@ if('serviceWorker' in navigator){
       // Event hasn't fired yet — wait for it
       window.addEventListener('beforeinstallprompt', scheduleShow);
     }
+  }
+})();
+</script>
+
+<script>
+(function(){
+  var STORAGE_KEY = 'mw_uwrite_announcement_acknowledged';
+  var CLOSE_DELAY = 240;
+  var modal = document.getElementById('uwrite-announcement');
+  if(!modal) return;
+
+  function openAnnouncement(){
+    if(localStorage.getItem(STORAGE_KEY) === '1') return;
+    modal.setAttribute('aria-hidden', 'false');
+    modal.classList.remove('is-closing');
+    modal.classList.add('open');
+    var closeButton = modal.querySelector('.announcement-close');
+    if(closeButton) closeButton.focus();
+  }
+
+  window.closeUwriteAnnouncement = function(){
+    if(!modal.classList.contains('open') || modal.classList.contains('is-closing')) return;
+    modal.classList.add('is-closing');
+    modal.setAttribute('aria-hidden', 'true');
+    window.setTimeout(function(){
+      modal.classList.remove('open', 'is-closing');
+    }, CLOSE_DELAY);
+  };
+
+  window.acknowledgeUwriteAnnouncement = function(){
+    localStorage.setItem(STORAGE_KEY, '1');
+    window.closeUwriteAnnouncement();
+    window.setTimeout(function(){ showToast('Alles klar, wir informieren dich zum Start!'); }, CLOSE_DELAY);
+  };
+
+  modal.addEventListener('click', function(event){
+    if(event.target === modal) window.closeUwriteAnnouncement();
+  });
+  document.addEventListener('keydown', function(event){
+    if(event.key === 'Escape' && modal.classList.contains('open')){
+      window.closeUwriteAnnouncement();
+    }
+  });
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', openAnnouncement, {once:true});
+  }else{
+    openAnnouncement();
   }
 })();
 </script>

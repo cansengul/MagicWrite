@@ -1,7 +1,7 @@
 // MagicWrite – Service Worker
 // Offline-PWA + Firebase/Google Analytics
 
-const CACHE_VERSION = 'magicwrite-v6';
+const CACHE_VERSION = 'magicwrite-v7';
 
 const APP_SHELL = [
   './',
